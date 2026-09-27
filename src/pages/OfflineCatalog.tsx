@@ -37,7 +37,7 @@ export default function OfflineCatalog() {
   const filteredProducts = useMemo(() => {
     const term = search.toLowerCase();
     return products.filter((product) => {
-      const haystack = `${product.name} ${product.description} ${product.category}`.toLowerCase();
+      const haystack = `${product.productCode} ${product.name} ${product.description} ${product.category}`.toLowerCase();
       return haystack.includes(term);
     });
   }, [products, search]);
@@ -145,6 +145,7 @@ export default function OfflineCatalog() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-medium text-foreground">{product.name}</p>
+                      <span className="font-mono text-xs text-muted-foreground">{product.productCode}</span>
                       {product.category && <Badge variant="outline">{product.category}</Badge>}
                     </div>
                     {product.description && <p className="text-sm text-muted-foreground line-clamp-2">{product.description}</p>}
@@ -176,6 +177,7 @@ export default function OfflineCatalog() {
                 </div>
                 <div className="p-4 space-y-2">
                   <p className="font-semibold text-foreground">{product.name}</p>
+                  <p className="font-mono text-xs text-muted-foreground">{product.productCode}</p>
                   <p className="text-base font-bold text-foreground">R$ {product.price.toLocaleString('pt-BR')}</p>
                   {product.description && <p className="text-sm text-muted-foreground">{product.description}</p>}
                 </div>

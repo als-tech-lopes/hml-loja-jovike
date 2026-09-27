@@ -57,7 +57,9 @@ export default function BillingManagement() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ plan_type: 'basic', due_day: 5, payment_status: 'active', pix_key: '', monthly_value: 0, is_trial: false, trial_start_date: '', trial_end_date: '' });
 
-  useEffect(() => { loadData(); }, []);
+  // loadData also synchronizes missing modules; rerun when the effective role changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadData(); }, [isSuperAdmin]);
 
   const normalizeFeatures = (items: PlanFeature[]) => items
     .map((feature) => ({

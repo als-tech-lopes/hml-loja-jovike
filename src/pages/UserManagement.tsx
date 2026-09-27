@@ -22,16 +22,19 @@ const moduleLabels: Record<keyof ModulePermissions, string> = {
 
 async function callAdminUsers(action: string, body: Record<string, unknown>) {
   const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error('Sua sessão expirou. Entre novamente para continuar.');
+
   const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-users`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${session?.access_token}`,
+      'Authorization': `Bearer ${session.access_token}`,
       'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
     },
     body: JSON.stringify({ action, ...body }),
   });
-  const data = await res.json();
+  const data = await res.json().catch(() => null);
+  if (!data) throw new Error('A função de usuários não respondeu corretamente. Verifique se ela está ativa.');
   if (!res.ok) throw new Error(data.error || 'Erro desconhecido');
   return data;
 }

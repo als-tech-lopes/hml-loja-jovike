@@ -10,17 +10,21 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Plus, ArrowUpCircle, ArrowDownCircle, Ban, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
+import { isWithinDateRange } from '@/lib/dateRange';
 
 export default function Movements() {
   const { movements, products, addMovement, cancelMovement } = useStock();
   const { user } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [productId, setProductId] = useState('');
+  const [productVariantId, setProductVariantId] = useState('');
   const [type, setType] = useState<'entrada' | 'saida'>('entrada');
   const [quantity, setQuantity] = useState('');
   const [note, setNote] = useState('');
   const [movementToCancel, setMovementToCancel] = useState<string | null>(null);
   const [cancellingMovementId, setCancellingMovementId] = useState<string | null>(null);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
@@ -34,13 +38,26 @@ export default function Movements() {
     movement.status !== 'Cancelada' && !movement.sourceSaleId && !movement.note.startsWith('Venda para ')
   );
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const selectedProduct = products.find(product => product.id === productId);
+  const filteredMovements = movements.filter(movement => isWithinDateRange(movement.date, startDate, endDate));
+  const hasDateFilter = Boolean(startDate || endDate);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const product = products.find(p => p.id === productId);
+    const product = selectedProduct;
     if (!product) return;
-    addMovement({ productId, productName: product.name, type, quantity: Number(quantity), note });
-    setDialogOpen(false);
-    setProductId(''); setQuantity(''); setNote('');
+    if (product.variants.length > 0 && !productVariantId) {
+      toast.error('Selecione a cor e o tamanho.');
+      return;
+    }
+    try {
+      await addMovement({ productId, productName: product.name, productVariantId: productVariantId || null, variantColor: null, variantSize: null, type, quantity: Number(quantity), note });
+      setDialogOpen(false);
+      setProductId(''); setProductVariantId(''); setQuantity(''); setNote('');
+      toast.success('Movimentação registrada com sucesso.');
+    } catch (error: any) {
+      toast.error(error?.message || 'Não foi possível registrar a movimentação.');
+    }
   };
 
   const handleCancelMovement = async () => {
@@ -63,7 +80,9 @@ export default function Movements() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-display font-bold text-foreground">Movimentações</h1>
-          <p className="text-muted-foreground">Histórico de entradas e saídas</p>
+          <p className="text-muted-foreground">
+            {hasDateFilter ? `${filteredMovements.length} de ${movements.length} movimentações` : 'Histórico de entradas e saídas'}
+          </p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
@@ -75,14 +94,30 @@ export default function Movements() {
             <DialogHeader><DialogTitle>Nova Movimentação</DialogTitle></DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label>Produto</Label>
-                <Select value={productId} onValueChange={setProductId}>
+                <Label>Produto (estoque total)</Label>
+                <Select value={productId} onValueChange={value => { setProductId(value); setProductVariantId(''); }}>
                   <SelectTrigger><SelectValue placeholder="Selecione um produto" /></SelectTrigger>
                   <SelectContent>
-                    {products.map(p => <SelectItem key={p.id} value={p.id}>{p.name} ({p.quantity} un.)</SelectItem>)}
+                    {products.map(p => <SelectItem key={p.id} value={p.id}>{p.productCode} — {p.name} ({p.quantity} un.)</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
+              {selectedProduct && selectedProduct.variants.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Cor e tamanho</Label>
+                  <Select value={productVariantId} onValueChange={setProductVariantId}>
+                    <SelectTrigger><SelectValue placeholder="Selecione a variação" /></SelectTrigger>
+                    <SelectContent>
+                      {selectedProduct.variants.filter(variant => type === 'entrada' || variant.quantity > 0).map(variant => (
+                        <SelectItem key={variant.id} value={variant.id!}>
+                          <span className="font-medium">{variant.color} — {variant.size}</span>
+                          <span className="ml-2 font-mono text-xs text-muted-foreground">{variant.variantCode} · {variant.quantity} un.</span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label>Tipo</Label>
                 <Select value={type} onValueChange={v => setType(v as 'entrada' | 'saida')}>
@@ -110,6 +145,36 @@ export default function Movements() {
         </Dialog>
       </div>
 
+      <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:flex-row sm:items-end">
+        <div className="grid flex-1 gap-3 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="movements-start-date">Data inicial</Label>
+            <Input
+              id="movements-start-date"
+              type="date"
+              value={startDate}
+              max={endDate || undefined}
+              onChange={event => setStartDate(event.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="movements-end-date">Data final</Label>
+            <Input
+              id="movements-end-date"
+              type="date"
+              value={endDate}
+              min={startDate || undefined}
+              onChange={event => setEndDate(event.target.value)}
+            />
+          </div>
+        </div>
+        {hasDateFilter && (
+          <Button type="button" variant="outline" onClick={() => { setStartDate(''); setEndDate(''); }}>
+            Limpar período
+          </Button>
+        )}
+      </div>
+
       <div className="bg-card rounded-xl border overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -117,6 +182,7 @@ export default function Movements() {
               <tr className="border-b bg-muted/50">
                 <th className="text-left p-4 text-sm font-medium text-muted-foreground">Data</th>
                 <th className="text-left p-4 text-sm font-medium text-muted-foreground">Produto</th>
+                <th className="text-left p-4 text-sm font-medium text-muted-foreground">Código</th>
                 <th className="text-left p-4 text-sm font-medium text-muted-foreground">Tipo</th>
                 <th className="text-right p-4 text-sm font-medium text-muted-foreground">Qtd</th>
                 <th className="text-left p-4 text-sm font-medium text-muted-foreground">Status</th>
@@ -125,11 +191,15 @@ export default function Movements() {
               </tr>
             </thead>
             <tbody>
-              {movements.map((m, i) => (
+              {filteredMovements.map((m, i) => (
                 <motion.tr key={m.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }}
                   className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                   <td className="p-4 text-sm text-muted-foreground">{new Date(m.date).toLocaleDateString('pt-BR')}</td>
-                  <td className="p-4 font-medium text-foreground">{m.productName}</td>
+                  <td className="p-4 font-medium text-foreground"><div>{m.productName}</div>{m.variantColor && <div className="text-xs font-normal text-muted-foreground">{m.variantColor} — {m.variantSize}</div>}</td>
+                  <td className="p-4 text-sm">
+                    <div className="font-mono font-semibold text-foreground">{m.productCode}</div>
+                    {m.variantCode && <div className="mt-1 font-mono text-xs text-muted-foreground">{m.variantCode}</div>}
+                  </td>
                   <td className="p-4">
                     <span className={`inline-flex items-center gap-1 text-sm font-medium ${m.type === 'entrada' ? 'text-success' : 'text-destructive'}`}>
                       {m.type === 'entrada' ? <ArrowUpCircle className="w-4 h-4" /> : <ArrowDownCircle className="w-4 h-4" />}
@@ -156,8 +226,8 @@ export default function Movements() {
                   )}
                 </motion.tr>
               ))}
-              {movements.length === 0 && (
-                <tr><td colSpan={isAdmin ? 7 : 6} className="p-8 text-center text-muted-foreground">Nenhuma movimentação registrada</td></tr>
+              {filteredMovements.length === 0 && (
+                <tr><td colSpan={isAdmin ? 8 : 7} className="p-8 text-center text-muted-foreground">{hasDateFilter ? 'Nenhuma movimentação encontrada no período' : 'Nenhuma movimentação registrada'}</td></tr>
               )}
             </tbody>
           </table>

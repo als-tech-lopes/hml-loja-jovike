@@ -58,11 +58,16 @@ export type Database = {
           id: string
           note: string
           product_id: string
+          product_code: string
           product_name: string
+          product_variant_id: string | null
           quantity: number
           source_sale_id: string | null
           status: string
           type: string
+          variant_color: string | null
+          variant_code: string | null
+          variant_size: string | null
         }
         Insert: {
           cancelled_at?: string | null
@@ -71,11 +76,16 @@ export type Database = {
           id?: string
           note?: string
           product_id: string
+          product_code: string
           product_name: string
+          product_variant_id?: string | null
           quantity: number
           source_sale_id?: string | null
           status?: string
           type: string
+          variant_color?: string | null
+          variant_code?: string | null
+          variant_size?: string | null
         }
         Update: {
           cancelled_at?: string | null
@@ -84,11 +94,16 @@ export type Database = {
           id?: string
           note?: string
           product_id?: string
+          product_code?: string
           product_name?: string
+          product_variant_id?: string | null
           quantity?: number
           source_sale_id?: string | null
           status?: string
           type?: string
+          variant_color?: string | null
+          variant_code?: string | null
+          variant_size?: string | null
         }
         Relationships: [
           {
@@ -96,6 +111,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movements_product_variant_id_fkey"
+            columns: ["product_variant_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
             referencedColumns: ["id"]
           },
           {
@@ -235,7 +257,9 @@ export type Database = {
           image_url: string | null
           min_stock: number
           name: string
+          purchase_price: number
           price: number
+          product_code: string
           quantity: number
           updated_at: string
         }
@@ -247,7 +271,9 @@ export type Database = {
           image_url?: string | null
           min_stock?: number
           name: string
+          purchase_price?: number
           price?: number
+          product_code?: string
           quantity?: number
           updated_at?: string
         }
@@ -259,11 +285,95 @@ export type Database = {
           image_url?: string | null
           min_stock?: number
           name?: string
+          purchase_price?: number
           price?: number
+          product_code?: string
           quantity?: number
           updated_at?: string
         }
         Relationships: []
+      }
+      product_variants: {
+        Row: {
+          color: string
+          created_at: string
+          description: string
+          id: string
+          min_stock: number
+          price: number
+          product_id: string
+          quantity: number
+          size: string
+          variant_code: string
+        }
+        Insert: {
+          color: string
+          created_at?: string
+          description?: string
+          id?: string
+          min_stock?: number
+          price?: number
+          product_id: string
+          quantity?: number
+          size: string
+          variant_code?: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          description?: string
+          id?: string
+          min_stock?: number
+          price?: number
+          product_id?: string
+          quantity?: number
+          size?: string
+          variant_code?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_variants_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_variant_images: {
+        Row: {
+          color: string
+          created_at: string
+          display_order: number
+          id: string
+          image_url: string
+          product_id: string
+        }
+        Insert: {
+          color: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          image_url: string
+          product_id: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          image_url?: string
+          product_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_variant_images_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -299,26 +409,41 @@ export type Database = {
         Row: {
           id: string
           product_id: string
+          product_code: string
           product_name: string
+          product_variant_id: string | null
           quantity: number
           sale_id: string
           unit_price: number
+          variant_color: string | null
+          variant_code: string | null
+          variant_size: string | null
         }
         Insert: {
           id?: string
           product_id: string
+          product_code: string
           product_name: string
+          product_variant_id?: string | null
           quantity: number
           sale_id: string
           unit_price: number
+          variant_color?: string | null
+          variant_code?: string | null
+          variant_size?: string | null
         }
         Update: {
           id?: string
           product_id?: string
+          product_code?: string
           product_name?: string
+          product_variant_id?: string | null
           quantity?: number
           sale_id?: string
           unit_price?: number
+          variant_color?: string | null
+          variant_code?: string | null
+          variant_size?: string | null
         }
         Relationships: [
           {
@@ -326,6 +451,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sale_items_product_variant_id_fkey"
+            columns: ["product_variant_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
             referencedColumns: ["id"]
           },
           {
@@ -345,10 +477,16 @@ export type Database = {
           client_phone: string
           created_at: string
           created_by: string | null
+          discount_amount: number
+          discount_type: string | null
+          discount_value: number
           id: string
           note: string
           payment_method: string
+          print_receipt: boolean
+          sale_code: string
           status: string
+          subtotal: number
           total: number
         }
         Insert: {
@@ -358,10 +496,16 @@ export type Database = {
           client_phone?: string
           created_at?: string
           created_by?: string | null
+          discount_amount?: number
+          discount_type?: string | null
+          discount_value?: number
           id?: string
           note?: string
           payment_method: string
+          print_receipt?: boolean
+          sale_code?: string
           status?: string
+          subtotal?: number
           total?: number
         }
         Update: {
@@ -371,10 +515,16 @@ export type Database = {
           client_phone?: string
           created_at?: string
           created_by?: string | null
+          discount_amount?: number
+          discount_type?: string | null
+          discount_value?: number
           id?: string
           note?: string
           payment_method?: string
+          print_receipt?: boolean
+          sale_code?: string
           status?: string
+          subtotal?: number
           total?: number
         }
         Relationships: []
@@ -491,6 +641,30 @@ export type Database = {
     Functions: {
       cancel_movement: { Args: { _movement_id: string }; Returns: undefined }
       cancel_sale: { Args: { _sale_id: string }; Returns: undefined }
+      create_sale: {
+        Args: {
+          _client_name: string
+          _client_phone: string
+          _discount_type: string | null
+          _discount_value: number
+          _items: Json
+          _note: string
+          _payment_method: string
+          _print_receipt: boolean
+        }
+        Returns: Database["public"]["Tables"]["sales"]["Row"]
+      }
+      create_stock_movement: {
+        Args: {
+          _note?: string
+          _product_id: string
+          _product_variant_id: string | null
+          _quantity: number
+          _type: string
+        }
+        Returns: Database["public"]["Tables"]["movements"]["Row"]
+      }
+      has_module_access: { Args: { _module: string }; Returns: boolean }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -499,6 +673,7 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: never; Returns: boolean }
+      is_super_admin: { Args: { _user_id?: string }; Returns: boolean }
     }
     Enums: {
       app_role: "admin" | "user" | "super_admin"

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { Fragment, useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,10 +10,13 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { Download, ShoppingBag, ArrowDownUp, Package, TrendingUp, TrendingDown, AlertTriangle, Star } from 'lucide-react';
+import { Download, ShoppingBag, ArrowDownUp, Package, TrendingUp, TrendingDown, AlertTriangle, Star, ChevronDown, ChevronRight } from 'lucide-react';
 import { format, parseISO, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import * as XLSX from 'xlsx';
+const safeSpreadsheetValue = (value: unknown) => {
+  if (typeof value === 'string' && /^[=+\-@\t\r]/.test(value)) return `'${value}`;
+  return value;
+};
 
 export default function Reports() {
   const [startDate, setStartDate] = useState('');
@@ -22,6 +25,8 @@ export default function Reports() {
   const [movementType, setMovementType] = useState('all');
   const [activeTab, setActiveTab] = useState('vendas');
   const [exportType, setExportType] = useState('all');
+  const [expandedSalesProducts, setExpandedSalesProducts] = useState<Set<string>>(new Set());
+  const [expandedStockProducts, setExpandedStockProducts] = useState<Set<string>>(new Set());
 
   const { data: sales = [] } = useQuery({
     queryKey: ['reports-sales'],
@@ -55,6 +60,14 @@ export default function Reports() {
     },
   });
 
+  const { data: productVariants = [] } = useQuery({
+    queryKey: ['reports-product-variants'],
+    queryFn: async () => {
+      const { data } = await supabase.from('product_variants').select('*').order('color').order('size');
+      return data || [];
+    },
+  });
+
   const { data: profiles = [] } = useQuery({
     queryKey: ['reports-profiles'],
     queryFn: async () => {
@@ -69,19 +82,19 @@ export default function Reports() {
     return p ? (p.name || p.email || 'Não informado') : 'Não informado';
   };
 
-  const dateFilter = (dateStr: string) => {
+  const dateFilter = useCallback((dateStr: string) => {
     if (!startDate && !endDate) return true;
     const d = parseISO(dateStr);
     if (startDate && endDate) return isWithinInterval(d, { start: startOfDay(parseISO(startDate)), end: endOfDay(parseISO(endDate)) });
     if (startDate) return d >= startOfDay(parseISO(startDate));
     if (endDate) return d <= endOfDay(parseISO(endDate));
     return true;
-  };
+  }, [startDate, endDate]);
 
-  const filteredSales = useMemo(() => sales.filter(s => dateFilter(s.created_at)), [sales, startDate, endDate]);
+  const filteredSales = useMemo(() => sales.filter(s => dateFilter(s.created_at)), [sales, dateFilter]);
   const filteredMovements = useMemo(() =>
     movements.filter(m => dateFilter(m.created_at) && (movementType === 'all' || m.type === movementType) && (selectedProduct === 'all' || m.product_id === selectedProduct)),
-    [movements, startDate, endDate, movementType, selectedProduct]
+    [movements, dateFilter, movementType, selectedProduct]
   );
 
   const filteredSaleItems = useMemo(() => {
@@ -103,17 +116,38 @@ export default function Reports() {
   const totalStock = products.reduce((sum, p) => sum + p.quantity, 0);
   const lowStockProducts = products.filter(p => p.quantity <= p.min_stock);
 
-  // Top selling products
+  // Sales consolidated by main product, with expandable variation details.
   const topProducts = useMemo(() => {
-    const map = new Map<string, { name: string; qty: number; revenue: number }>();
+    const map = new Map<string, { id: string; productCode: string; name: string; qty: number; revenue: number; variants: Map<string, { code: string; color: string; size: string; qty: number; revenue: number }> }>();
     filteredSaleItems.forEach(si => {
-      const existing = map.get(si.product_id) || { name: si.product_name, qty: 0, revenue: 0 };
+      const existing = map.get(si.product_id) || { id: si.product_id, productCode: si.product_code, name: si.product_name, qty: 0, revenue: 0, variants: new Map() };
       existing.qty += si.quantity;
       existing.revenue += si.quantity * Number(si.unit_price);
+      if (si.product_variant_id && si.variant_code) {
+        const variant = existing.variants.get(si.product_variant_id) || { code: si.variant_code, color: si.variant_color || '', size: si.variant_size || '', qty: 0, revenue: 0 };
+        variant.qty += si.quantity;
+        variant.revenue += si.quantity * Number(si.unit_price);
+        existing.variants.set(si.product_variant_id, variant);
+      }
       map.set(si.product_id, existing);
     });
-    return Array.from(map.values()).sort((a, b) => b.qty - a.qty).slice(0, 10);
+    return Array.from(map.values()).map(product => ({ ...product, variants: Array.from(product.variants.values()).sort((a, b) => b.qty - a.qty) })).sort((a, b) => b.qty - a.qty);
   }, [filteredSaleItems]);
+
+  const variantsByProduct = useMemo(() => {
+    const map = new Map<string, typeof productVariants>();
+    productVariants.forEach(variant => map.set(variant.product_id, [...(map.get(variant.product_id) || []), variant]));
+    return map;
+  }, [productVariants]);
+
+  const toggleExpanded = (setter: React.Dispatch<React.SetStateAction<Set<string>>>, productId: string) => {
+    setter(current => {
+      const next = new Set(current);
+      if (next.has(productId)) next.delete(productId);
+      else next.add(productId);
+      return next;
+    });
+  };
 
   // Sales by month chart data
   const salesByMonth = useMemo(() => {
@@ -143,52 +177,106 @@ export default function Reports() {
     return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([, v]) => v);
   }, [filteredMovements]);
 
-  const exportToExcel = () => {
-    const wb = XLSX.utils.book_new();
+  const exportToExcel = async () => {
+    const { default: ExcelJS } = await import('exceljs');
+    const workbook = new ExcelJS.Workbook();
     const salesData = filteredSales.map(s => ({
+      'Código': s.sale_code,
       'Data': format(parseISO(s.created_at), 'dd/MM/yyyy HH:mm'),
       'Cliente': s.client_name,
       'Vendedor': sellerName((s as any).created_by),
       'Telefone': s.client_phone,
       'Pagamento': s.payment_method,
+      'Cupom fiscal': s.print_receipt ? 'Solicitado' : 'Não solicitado',
+      'Subtotal': Number(s.subtotal),
+      'Tipo de desconto': s.discount_type === 'percentage' ? 'Porcentagem' : s.discount_type === 'fixed' ? 'Valor fixo' : 'Sem desconto',
+      'Valor informado do desconto': Number(s.discount_value),
+      'Desconto aplicado': Number(s.discount_amount),
       'Total': Number(s.total),
       'Observação': s.note,
     }));
     const movData = filteredMovements.map(m => ({
       'Data': format(parseISO(m.created_at), 'dd/MM/yyyy HH:mm'),
+      'Código principal': m.product_code,
+      'Subcódigo da variação': m.variant_code || '',
       'Produto': m.product_name,
+      'Cor': m.variant_color || '',
+      'Tamanho': m.variant_size || '',
       'Tipo': m.type === 'entrada' ? 'Entrada' : 'Saída',
       'Quantidade': m.quantity,
       'Observação': m.note,
     }));
     const prodData = products.map(p => ({
+      'Código principal': p.product_code,
       'Nome': p.name,
       'Categoria': p.category,
-      'Preço': Number(p.price),
+      'Valor de Compra': Number(p.purchase_price),
+      'Valor de Venda': Number(p.price),
       'Estoque': p.quantity,
       'Estoque Mínimo': p.min_stock,
       'Status': p.quantity <= p.min_stock ? 'Baixo' : 'Normal',
     }));
+    const saleItemsData = filteredSaleItems.map(item => ({
+      'Código principal': item.product_code,
+      'Subcódigo da variação': item.variant_code || '',
+      'Produto': item.product_name,
+      'Cor': item.variant_color || '',
+      'Tamanho': item.variant_size || '',
+      'Quantidade': item.quantity,
+      'Valor unitário': Number(item.unit_price),
+      'Total': item.quantity * Number(item.unit_price),
+    }));
+    const variantsData = productVariants.map(variant => {
+      const product = products.find(item => item.id === variant.product_id);
+      return {
+        'Código principal': product?.product_code || '',
+        'Subcódigo da variação': variant.variant_code,
+        'Produto': product?.name || '',
+        'Cor': variant.color,
+        'Tamanho': variant.size,
+        'Valor de venda': Number(variant.price),
+        'Estoque': variant.quantity,
+        'Estoque mínimo': variant.min_stock,
+      };
+    });
 
     const sheets = {
       sales: { name: 'Vendas', data: salesData },
       movements: { name: 'Movimentações', data: movData },
       products: { name: 'Produtos', data: prodData },
+      salesItems: { name: 'Itens de vendas', data: saleItemsData },
+      variants: { name: 'Variações', data: variantsData },
     } as const;
 
-    if (exportType === 'sales') {
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheets.sales.data), sheets.sales.name);
-    } else if (exportType === 'movements') {
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheets.movements.data), sheets.movements.name);
-    } else if (exportType === 'products') {
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheets.products.data), sheets.products.name);
-    } else {
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheets.sales.data), sheets.sales.name);
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheets.movements.data), sheets.movements.name);
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheets.products.data), sheets.products.name);
-    }
+    const selectedSheets = exportType === 'sales'
+      ? [sheets.sales, sheets.salesItems]
+      : exportType === 'movements'
+        ? [sheets.movements]
+        : exportType === 'products'
+          ? [sheets.products, sheets.variants]
+          : [sheets.sales, sheets.movements, sheets.products, sheets.salesItems, sheets.variants];
 
-    XLSX.writeFile(wb, `relatorio_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
+    selectedSheets.forEach(({ name, data }) => {
+      const worksheet = workbook.addWorksheet(name);
+      const rows = data as Array<Record<string, unknown>>;
+      const headers = rows.length > 0 ? Object.keys(rows[0]) : [];
+      worksheet.columns = headers.map(header => ({ header, key: header, width: Math.max(14, Math.min(40, header.length + 4)) }));
+      worksheet.addRows(rows.map(row => Object.fromEntries(
+        Object.entries(row).map(([key, value]) => [key, safeSpreadsheetValue(value)]),
+      )));
+      worksheet.getRow(1).font = { bold: true };
+      worksheet.views = [{ state: 'frozen', ySplit: 1 }];
+      worksheet.autoFilter = headers.length > 0 ? { from: { row: 1, column: 1 }, to: { row: 1, column: headers.length } } : undefined;
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([new Uint8Array(buffer)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = `relatorio_${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
+    link.click();
+    URL.revokeObjectURL(downloadUrl);
   };
 
   const salesChartConfig = { total: { label: 'Receita', color: 'hsl(var(--primary))' }, count: { label: 'Vendas', color: 'hsl(var(--accent))' } };
@@ -234,7 +322,7 @@ export default function Reports() {
                 <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
-                  {products.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                  {products.map(p => <SelectItem key={p.id} value={p.id}>{p.product_code} — {p.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -294,13 +382,33 @@ export default function Reports() {
           )}
 
           {topProducts.length > 0 && (
-            <Card><CardHeader><CardTitle className="text-base flex items-center gap-2"><Star className="w-4 h-4 text-accent" /> Produtos Mais Vendidos</CardTitle></CardHeader>
+            <Card><CardHeader><CardTitle className="text-base flex items-center gap-2"><Star className="w-4 h-4 text-accent" /> Vendas consolidadas por produto</CardTitle></CardHeader>
               <CardContent>
                 <Table><TableHeader><TableRow>
-                  <TableHead>#</TableHead><TableHead>Produto</TableHead><TableHead className="text-right">Qtd</TableHead><TableHead className="text-right">Receita</TableHead>
+                  <TableHead>#</TableHead><TableHead>Código principal / Produto</TableHead><TableHead className="text-right">Qtd</TableHead><TableHead className="text-right">Receita</TableHead>
                 </TableRow></TableHeader><TableBody>
                   {topProducts.map((p, i) => (
-                    <TableRow key={i}><TableCell>{i + 1}</TableCell><TableCell>{p.name}</TableCell><TableCell className="text-right">{p.qty}</TableCell><TableCell className="text-right">R$ {p.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell></TableRow>
+                    <Fragment key={p.id}>
+                      <TableRow>
+                        <TableCell>{i + 1}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            {p.variants.length > 0 && <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => toggleExpanded(setExpandedSalesProducts, p.id)}>{expandedSalesProducts.has(p.id) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</Button>}
+                            <div><div className="font-mono font-semibold">{p.productCode}</div><div>{p.name}</div></div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right font-semibold">{p.qty}</TableCell>
+                        <TableCell className="text-right font-semibold">R$ {p.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
+                      </TableRow>
+                      {expandedSalesProducts.has(p.id) && p.variants.map(variant => (
+                        <TableRow key={`${p.id}:${variant.code}`} className="bg-muted/30">
+                          <TableCell />
+                          <TableCell className="pl-14"><div className="font-medium">{variant.color} — {variant.size}</div><div className="font-mono text-xs text-muted-foreground">{variant.code}</div></TableCell>
+                          <TableCell className="text-right">{variant.qty}</TableCell>
+                          <TableCell className="text-right">R$ {variant.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
+                        </TableRow>
+                      ))}
+                    </Fragment>
                   ))}
                 </TableBody></Table>
               </CardContent>
@@ -310,14 +418,16 @@ export default function Reports() {
           <Card><CardHeader><CardTitle className="text-base">Detalhamento de Vendas</CardTitle></CardHeader>
             <CardContent>
               <Table><TableHeader><TableRow>
-                <TableHead>Data</TableHead><TableHead>Cliente</TableHead><TableHead>Vendedor</TableHead><TableHead>Pagamento</TableHead><TableHead className="text-right">Total</TableHead>
+                <TableHead>Código</TableHead><TableHead>Data</TableHead><TableHead>Cliente</TableHead><TableHead>Vendedor</TableHead><TableHead>Pagamento</TableHead><TableHead>Cupom</TableHead><TableHead className="text-right">Total</TableHead>
               </TableRow></TableHeader><TableBody>
                 {filteredSales.slice(0, 50).map(s => (
                   <TableRow key={s.id}>
+                    <TableCell className="font-mono">{s.sale_code}</TableCell>
                     <TableCell>{format(parseISO(s.created_at), 'dd/MM/yyyy HH:mm')}</TableCell>
                     <TableCell>{s.client_name}</TableCell>
                     <TableCell>{sellerName((s as any).created_by)}</TableCell>
                     <TableCell><Badge variant="outline">{s.payment_method}</Badge></TableCell>
+                    <TableCell><Badge variant={s.print_receipt ? 'default' : 'outline'}>{s.print_receipt ? 'Solicitado' : 'Não'}</Badge></TableCell>
                     <TableCell className="text-right font-medium">R$ {Number(s.total).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
                   </TableRow>
                 ))}
@@ -363,12 +473,14 @@ export default function Reports() {
           <Card><CardHeader><CardTitle className="text-base">Histórico de Movimentações</CardTitle></CardHeader>
             <CardContent>
               <Table><TableHeader><TableRow>
-                <TableHead>Data</TableHead><TableHead>Produto</TableHead><TableHead>Tipo</TableHead><TableHead className="text-right">Quantidade</TableHead><TableHead>Observação</TableHead>
+                <TableHead>Data</TableHead><TableHead>Código</TableHead><TableHead>Produto</TableHead><TableHead>Variação</TableHead><TableHead>Tipo</TableHead><TableHead className="text-right">Quantidade</TableHead><TableHead>Observação</TableHead>
               </TableRow></TableHeader><TableBody>
                 {filteredMovements.slice(0, 50).map(m => (
                   <TableRow key={m.id}>
                     <TableCell>{format(parseISO(m.created_at), 'dd/MM/yyyy HH:mm')}</TableCell>
+                    <TableCell><div className="font-mono font-semibold">{m.product_code}</div>{m.variant_code && <div className="font-mono text-xs text-muted-foreground">{m.variant_code}</div>}</TableCell>
                     <TableCell>{m.product_name}</TableCell>
+                    <TableCell>{m.variant_color ? `${m.variant_color} — ${m.variant_size}` : '—'}</TableCell>
                     <TableCell><Badge variant={m.type === 'entrada' ? 'default' : 'destructive'}>{m.type === 'entrada' ? 'Entrada' : 'Saída'}</Badge></TableCell>
                     <TableCell className="text-right font-medium">{m.quantity}</TableCell>
                     <TableCell className="text-muted-foreground">{m.note}</TableCell>
@@ -400,10 +512,11 @@ export default function Reports() {
             <Card><CardHeader><CardTitle className="text-base flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-destructive" /> Produtos com Estoque Baixo</CardTitle></CardHeader>
               <CardContent>
                 <Table><TableHeader><TableRow>
-                  <TableHead>Produto</TableHead><TableHead>Categoria</TableHead><TableHead className="text-right">Estoque</TableHead><TableHead className="text-right">Mínimo</TableHead>
+                  <TableHead>Código</TableHead><TableHead>Produto</TableHead><TableHead>Categoria</TableHead><TableHead className="text-right">Estoque</TableHead><TableHead className="text-right">Mínimo</TableHead>
                 </TableRow></TableHeader><TableBody>
                   {lowStockProducts.map(p => (
                     <TableRow key={p.id}>
+                      <TableCell className="font-mono">{p.product_code}</TableCell>
                       <TableCell className="font-medium">{p.name}</TableCell>
                       <TableCell>{p.category}</TableCell>
                       <TableCell className="text-right"><Badge variant="destructive">{p.quantity}</Badge></TableCell>
@@ -418,17 +531,40 @@ export default function Reports() {
           <Card><CardHeader><CardTitle className="text-base">Todos os Produtos</CardTitle></CardHeader>
             <CardContent>
               <Table><TableHeader><TableRow>
-                <TableHead>Produto</TableHead><TableHead>Categoria</TableHead><TableHead className="text-right">Preço</TableHead><TableHead className="text-right">Estoque</TableHead><TableHead>Status</TableHead>
+                <TableHead>Código</TableHead><TableHead>Produto</TableHead><TableHead>Categoria</TableHead><TableHead className="text-right">Compra</TableHead><TableHead className="text-right">Venda</TableHead><TableHead className="text-right">Estoque</TableHead><TableHead>Status</TableHead>
               </TableRow></TableHeader><TableBody>
-                {products.map(p => (
-                  <TableRow key={p.id}>
-                    <TableCell className="font-medium">{p.name}</TableCell>
-                    <TableCell>{p.category}</TableCell>
-                    <TableCell className="text-right">R$ {Number(p.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
-                    <TableCell className="text-right">{p.quantity}</TableCell>
-                    <TableCell><Badge variant={p.quantity <= p.min_stock ? 'destructive' : 'outline'}>{p.quantity <= p.min_stock ? 'Baixo' : 'Normal'}</Badge></TableCell>
-                  </TableRow>
-                ))}
+                {products.map(p => {
+                  const variants = variantsByProduct.get(p.id) || [];
+                  return (
+                    <Fragment key={p.id}>
+                      <TableRow>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            {variants.length > 0 && <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => toggleExpanded(setExpandedStockProducts, p.id)}>{expandedStockProducts.has(p.id) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</Button>}
+                            <span className="font-mono font-semibold">{p.product_code}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-medium">{p.name}</TableCell>
+                        <TableCell>{p.category}</TableCell>
+                        <TableCell className="text-right">R$ {Number(p.purchase_price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
+                        <TableCell className="text-right">R$ {Number(p.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
+                        <TableCell className="text-right font-semibold">{p.quantity}</TableCell>
+                        <TableCell><Badge variant={p.quantity <= p.min_stock ? 'destructive' : 'outline'}>{p.quantity <= p.min_stock ? 'Baixo' : 'Normal'}</Badge></TableCell>
+                      </TableRow>
+                      {expandedStockProducts.has(p.id) && variants.map(variant => (
+                        <TableRow key={variant.id} className="bg-muted/30">
+                          <TableCell className="pl-12 font-mono text-xs">{variant.variant_code}</TableCell>
+                          <TableCell>{variant.color} — {variant.size}</TableCell>
+                          <TableCell className="text-muted-foreground">Variação</TableCell>
+                          <TableCell className="text-right text-muted-foreground">—</TableCell>
+                          <TableCell className="text-right">R$ {Number(variant.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
+                          <TableCell className="text-right">{variant.quantity}</TableCell>
+                          <TableCell><Badge variant={variant.quantity <= variant.min_stock ? 'destructive' : 'outline'}>{variant.quantity <= variant.min_stock ? 'Baixo' : 'Normal'}</Badge></TableCell>
+                        </TableRow>
+                      ))}
+                    </Fragment>
+                  );
+                })}
               </TableBody></Table>
             </CardContent>
           </Card>
