@@ -293,7 +293,7 @@ function ProductForm({ product, onSave, onClose }: { product?: Product; onSave: 
         <p className="text-xs text-muted-foreground">O nome será padronizado e comparado sem diferenciar acentos, espaços, pontuação ou letras maiúsculas.</p>
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="space-y-2"><Label>Quantidade padrão *</Label><Input type="number" min="0" value={quantity} onChange={e => setQuantity(e.target.value)} required /></div>
+        <div className="space-y-2"><Label>Quantidade *</Label><Input type="number" min="0" value={quantity} onChange={e => setQuantity(e.target.value)} required /></div>
         <div className="space-y-2"><Label>Valor de compra (R$) *</Label><Input type="number" min="0" step="0.01" value={purchasePrice} onChange={e => setPurchasePrice(e.target.value)} required /></div>
         <div className="space-y-2"><Label>Valor de venda (R$) *</Label><Input type="number" min="0" step="0.01" value={price} onChange={e => setPrice(e.target.value)} required /></div>
       </div>
