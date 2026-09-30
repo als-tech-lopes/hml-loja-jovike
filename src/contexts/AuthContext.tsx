@@ -135,6 +135,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     const userData = await fetchUserData(supabaseUser);
+    if (userData && !userData.is_active) {
+      await supabase.auth.signOut();
+      setUser(null);
+      setUsers([]);
+      setLoading(false);
+      return;
+    }
     setUser(userData);
     await loadPlanFeatures();
     const trial = await fetchTrialInfo();

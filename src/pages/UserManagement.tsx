@@ -24,15 +24,20 @@ async function callAdminUsers(action: string, body: Record<string, unknown>) {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.access_token) throw new Error('Sua sessão expirou. Entre novamente para continuar.');
 
-  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-users`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${session.access_token}`,
-      'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-    },
-    body: JSON.stringify({ action, ...body }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+        'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+      },
+      body: JSON.stringify({ action, ...body }),
+    });
+  } catch {
+    throw new Error('Não foi possível acessar o serviço de usuários. Confira o deploy da função e o domínio configurado em ALLOWED_ORIGINS.');
+  }
   const data = await res.json().catch(() => null);
   if (!data) throw new Error('A função de usuários não respondeu corretamente. Verifique se ela está ativa.');
   if (!res.ok) throw new Error(data.error || 'Erro desconhecido');
