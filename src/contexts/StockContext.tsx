@@ -133,23 +133,25 @@ export function StockProvider({ children }: { children: React.ReactNode }) {
       image_url: p.image_url ?? null,
     }).select().single();
     if (error) throw error;
-    if (p.variants.length > 0) {
-      const { error: variantsError } = await supabase.from('product_variants').insert(
-        p.variants.map(variant => ({
-          product_id: data.id, color: variant.color.trim(), size: variant.size.trim(), quantity: variant.quantity,
-          price: variant.price, min_stock: variant.minStock, description: variant.description,
-        })),
-      );
-      if (variantsError) {
-        await supabase.from('products').delete().eq('id', data.id);
-        throw variantsError;
-      }
-    }
-    if (p.variantImages.length > 0) {
-      const { error: imagesError } = await supabase.from('product_variant_images').insert(
-        p.variantImages.map(image => ({ product_id: data.id, color: image.color.trim(), image_url: image.imageUrl, display_order: image.displayOrder })),
-      );
-      if (imagesError) throw imagesError;
+    const [variantsResult, imagesResult] = await Promise.all([
+      p.variants.length > 0
+        ? supabase.from('product_variants').insert(
+          p.variants.map(variant => ({
+            product_id: data.id, color: variant.color.trim(), size: variant.size.trim(), quantity: variant.quantity,
+            price: variant.price, min_stock: variant.minStock, description: variant.description,
+          })),
+        )
+        : Promise.resolve({ error: null }),
+      p.variantImages.length > 0
+        ? supabase.from('product_variant_images').insert(
+          p.variantImages.map(image => ({ product_id: data.id, color: image.color.trim(), image_url: image.imageUrl, display_order: image.displayOrder })),
+        )
+        : Promise.resolve({ error: null }),
+    ]);
+    const relatedRecordError = variantsResult.error || imagesResult.error;
+    if (relatedRecordError) {
+      await supabase.from('products').delete().eq('id', data.id);
+      throw relatedRecordError;
     }
     const product: Product = {
         id: data.id, productCode: data.product_code, name: data.name, quantity: data.quantity,
@@ -193,13 +195,14 @@ export function StockProvider({ children }: { children: React.ReactNode }) {
         const { error: deleteError } = await supabase.from('product_variants').delete().in('id', removedIds).eq('product_id', id);
         if (deleteError) throw deleteError;
       }
-      for (const variant of existingVariants) {
-        const { error: updateVariantError } = await supabase.from('product_variants').update({
+      const variantUpdateResults = await Promise.all(existingVariants.map(variant => (
+        supabase.from('product_variants').update({
           color: variant.color.trim(), size: variant.size.trim(), quantity: variant.quantity,
           price: variant.price, min_stock: variant.minStock, description: variant.description,
-        }).eq('id', variant.id!).eq('product_id', id);
-        if (updateVariantError) throw updateVariantError;
-      }
+        }).eq('id', variant.id!).eq('product_id', id)
+      )));
+      const variantUpdateError = variantUpdateResults.find(result => result.error)?.error;
+      if (variantUpdateError) throw variantUpdateError;
       if (newVariants.length > 0) {
         const { error: insertError } = await supabase.from('product_variants').insert(
           newVariants.map(variant => ({
@@ -224,8 +227,24 @@ export function StockProvider({ children }: { children: React.ReactNode }) {
   }, [fetchProducts]);
 
   const deleteProduct = useCallback(async (id: string) => {
-    await supabase.from('products').delete().eq('id', id);
-    setProducts(prev => prev.filter(p => p.id !== id));
+    const { data: deletedProduct, error } = await supabase
+      .from('products')
+      .delete()
+      .eq('id', id)
+      .select('id')
+      .maybeSingle();
+
+    if (error) {
+      if (error.code === '23503') {
+        throw new Error('Este produto possui vendas vinculadas e não pode ser excluído, pois faz parte do histórico da loja.');
+      }
+      throw new Error(`Não foi possível excluir o produto: ${error.message}`);
+    }
+    if (!deletedProduct) {
+      throw new Error('O produto não foi excluído. Verifique sua permissão de acesso e tente novamente.');
+    }
+
+    setProducts(prev => prev.filter(product => product.id !== id));
   }, []);
 
   const addMovement = useCallback(async (m: Omit<Movement, 'id' | 'productCode' | 'date' | 'status' | 'cancelledAt' | 'cancelledBy'>) => {

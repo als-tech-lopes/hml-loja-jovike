@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useStock, Product } from '@/contexts/StockContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,7 +7,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Search, Pencil, Trash2, X } from 'lucide-react';
+import { Loader2, Plus, Search, Pencil, Trash2, X } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -128,7 +128,7 @@ function createInitialColors(product?: Product): ColorDraft[] {
   }));
 }
 
-function ProductForm({ product, onSave, onClose }: { product?: Product; onSave: (data: any) => void; onClose: () => void }) {
+function ProductForm({ product, onSave, onClose, isSaving }: { product?: Product; onSave: (data: any) => Promise<void>; onClose: () => void; isSaving: boolean }) {
   const initialCategory = product?.category?.trim() || '';
   const [name, setName] = useState(product?.name || '');
   const [quantity, setQuantity] = useState(product?.variants[0]?.quantity?.toString() || product?.quantity?.toString() || '');
@@ -164,8 +164,9 @@ function ProductForm({ product, onSave, onClose }: { product?: Product; onSave: 
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
     const formattedName = formatProductName(name);
     if (!formattedName) {
       toast.error('Informe o nome do produto.');
@@ -219,7 +220,7 @@ function ProductForm({ product, onSave, onClose }: { product?: Product; onSave: 
       toast.error('Revise os valores de compra e venda do produto.');
       return;
     }
-    onSave({ 
+    await onSave({
       name: formattedName,
       quantity: completedVariants.length > 0 ? completedVariants.reduce((sum, variant) => sum + variant.quantity, 0) : Number(quantity),
       purchasePrice: Number(purchasePrice),
@@ -504,8 +505,11 @@ function ProductForm({ product, onSave, onClose }: { product?: Product; onSave: 
       </div>
 
       <div className="flex gap-2 justify-end">
-        <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
-        <Button type="submit" className="gold-gradient text-gold-foreground hover:opacity-90">Salvar</Button>
+        <Button type="button" variant="ghost" onClick={onClose} disabled={isSaving}>Cancelar</Button>
+        <Button type="submit" className="gold-gradient text-gold-foreground hover:opacity-90" disabled={isSaving}>
+          {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {isSaving ? 'Salvando...' : 'Salvar'}
+        </Button>
       </div>
     </form>
   );
@@ -516,10 +520,27 @@ export default function Products() {
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | undefined>();
+  const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const saveInProgressRef = useRef(false);
   const [searchParams] = useSearchParams();
 
   const isNewFromDashboard = searchParams.get('new') === '1';
   const [showNew] = useState(isNewFromDashboard);
+
+  const handleDeleteProduct = async (product: Product) => {
+    if (!window.confirm(`Excluir o produto "${product.name}"? Esta ação não poderá ser desfeita.`)) return;
+
+    setDeletingProductId(product.id);
+    try {
+      await deleteProduct(product.id);
+      toast.success('Produto excluído com sucesso.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível excluir o produto.');
+    } finally {
+      setDeletingProductId(null);
+    }
+  };
 
   const filtered = products.filter(p =>
     p.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -529,6 +550,10 @@ export default function Products() {
   );
 
 const handleSave = async (data: any) => {
+  if (saveInProgressRef.current) return;
+  saveInProgressRef.current = true;
+  setIsSaving(true);
+
   try {
     if (!import.meta.env.VITE_SUPABASE_URL) {
       throw new Error('Configuração do backend ausente (SUPABASE_URL).');
@@ -548,15 +573,6 @@ const handleSave = async (data: any) => {
     }
 
     let imageUrl: string | null = editingProduct?.image_url ?? null;
-    const hasNewImages = Boolean(data.file) || data.colors.some((color: ColorDraft) => color.files.length > 0);
-
-    if (hasNewImages) {
-      const { error: bucketError } = await supabase.storage.from('products').list('', { limit: 1 });
-      if (bucketError) {
-        throw new Error(bucketError.message.toLowerCase().includes('not found') ? 'Bucket "products" não encontrado.' : `Falha ao validar acesso ao storage: ${bucketError.message}`);
-      }
-    }
-
     const uploadProductImage = async (file: File) => {
       const optimizedFile = await optimizeProductImage(file);
       const fileExt = optimizedFile.name.split('.').pop() || 'webp';
@@ -564,7 +580,11 @@ const handleSave = async (data: any) => {
       const { error: uploadError } = await supabase.storage
         .from('products')
         .upload(fileName, optimizedFile, { cacheControl: '31536000', contentType: optimizedFile.type, upsert: false });
-      if (uploadError) throw new Error(`Falha no upload da imagem: ${uploadError.message}`);
+      if (uploadError) {
+        throw new Error(uploadError.message.toLowerCase().includes('not found')
+          ? 'Bucket "products" não encontrado.'
+          : `Falha no upload da imagem: ${uploadError.message}`);
+      }
       const { data: publicUrl } = supabase.storage
         .from('products')
         .getPublicUrl(fileName);
@@ -572,16 +592,17 @@ const handleSave = async (data: any) => {
       return publicUrl.publicUrl;
     };
 
-    if (data.file) {
-      imageUrl = await uploadProductImage(data.file);
-    }
+    const [uploadedMainImage, uploadedColorImages] = await Promise.all([
+      data.file ? uploadProductImage(data.file) : Promise.resolve(null),
+      Promise.all((data.colors as ColorDraft[]).map(async color => ({
+        color: color.name,
+        urls: [...color.existingImages, ...await Promise.all(color.files.map(uploadProductImage))],
+      }))),
+    ]);
+    if (uploadedMainImage) imageUrl = uploadedMainImage;
 
-    const variantImages: Array<{ color: string; imageUrl: string; displayOrder: number }> = [];
-    for (const color of data.colors as ColorDraft[]) {
-      const urls = [...color.existingImages];
-      for (const colorFile of color.files) urls.push(await uploadProductImage(colorFile));
-      urls.forEach((url, displayOrder) => variantImages.push({ color: color.name, imageUrl: url, displayOrder }));
-    }
+    const variantImages: Array<{ color: string; imageUrl: string; displayOrder: number }> = uploadedColorImages
+      .flatMap(({ color, urls }) => urls.map((imageUrl, displayOrder) => ({ color, imageUrl, displayOrder })));
     if (!imageUrl && variantImages.length > 0) imageUrl = variantImages[0].imageUrl;
 
     const productData = {
@@ -599,6 +620,7 @@ const handleSave = async (data: any) => {
 
     if (editingProduct) {
       await updateProduct(editingProduct.id, productData);
+      toast.success('Produto atualizado com sucesso.');
     } else {
       const createdProduct = await addProduct(productData);
       toast.success(`Produto ${createdProduct.productCode} cadastrado com sucesso.`);
@@ -609,7 +631,10 @@ const handleSave = async (data: any) => {
 
   } catch (error) {
     console.error('Erro ao salvar produto:', error);
-    alert(error instanceof Error ? error.message : 'Erro ao salvar produto. Veja o console para detalhes.');
+    toast.error(error instanceof Error ? error.message : 'Erro ao salvar produto.');
+  } finally {
+    saveInProgressRef.current = false;
+    setIsSaving(false);
   }
 };
 
@@ -623,7 +648,7 @@ const handleSave = async (data: any) => {
           <h1 className="text-3xl font-display font-bold text-foreground">Produtos</h1>
           <p className="text-muted-foreground">{products.length} produtos cadastrados</p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog open={dialogOpen} onOpenChange={open => { if (!isSaving) setDialogOpen(open); }}>
           <DialogTrigger asChild>
             <Button onClick={openNew} className="gold-gradient text-gold-foreground hover:opacity-90">
               <Plus className="w-4 h-4 mr-2" /> Novo Produto
@@ -631,7 +656,7 @@ const handleSave = async (data: any) => {
           </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader><DialogTitle>{editingProduct ? 'Editar Produto' : 'Novo Produto'}</DialogTitle></DialogHeader>
-            <ProductForm product={editingProduct} onSave={handleSave} onClose={() => setDialogOpen(false)} />
+            <ProductForm product={editingProduct} onSave={handleSave} onClose={() => setDialogOpen(false)} isSaving={isSaving} />
           </DialogContent>
         </Dialog>
       </div>
@@ -703,7 +728,18 @@ const handleSave = async (data: any) => {
                   <td className="p-4 text-right">
                     <div className="flex gap-1 justify-end">
                       <Button variant="ghost" size="icon" onClick={() => openEdit(p)}><Pencil className="w-4 h-4" /></Button>
-                      <Button variant="ghost" size="icon" onClick={() => deleteProduct(p.id)} className="text-destructive hover:text-destructive"><Trash2 className="w-4 h-4" /></Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDeleteProduct(p)}
+                        className="text-destructive hover:text-destructive"
+                        disabled={deletingProductId === p.id}
+                        title={`Excluir ${p.name}`}
+                      >
+                        {deletingProductId === p.id
+                          ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                          : <Trash2 className="w-4 h-4" />}
+                      </Button>
                     </div>
                   </td>
                 </motion.tr>
