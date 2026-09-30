@@ -219,7 +219,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updateUserPermissions = useCallback(async (userId: string, permissions: ModulePermissions) => {
-    await supabase
+    const { error } = await supabase
       .from('module_permissions')
       .update({
         dashboard: permissions.dashboard,
@@ -228,7 +228,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         sales: permissions.sales,
         reports: permissions.reports,
       })
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .select('user_id')
+      .single();
+
+    if (error) throw new Error(`Não foi possível atualizar as permissões: ${error.message}`);
 
     setUsers(prev => prev.map(u => u.id === userId ? { ...u, permissions } : u));
     if (user?.id === userId) setUser(prev => prev ? { ...prev, permissions } : null);

@@ -156,7 +156,7 @@ export default function UserManagement() {
         <div>
           <h1 className="text-3xl font-display font-bold text-foreground">Gerenciar Usuários</h1>
           <p className="text-muted-foreground">
-            {isSuperAdmin ? 'Controle total de usuários e permissões' : 'Edite informações dos usuários'}
+            {isSuperAdmin ? 'Controle total de usuários e permissões' : 'Gerencie usuários comuns e suas permissões'}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -167,8 +167,7 @@ export default function UserManagement() {
             className="w-48 sm:w-64"
           />
 
-          {/* Only super_admin can create users */}
-          {isSuperAdmin && (
+          {(isAdmin || isSuperAdmin) && (
             <Dialog open={createOpen} onOpenChange={setCreateOpen}>
               <DialogTrigger asChild>
                 <Button className="gold-gradient text-gold-foreground font-semibold">
@@ -198,8 +197,8 @@ export default function UserManagement() {
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="user">Usuário</SelectItem>
-                        <SelectItem value="admin">Administrador</SelectItem>
-                        <SelectItem value="super_admin">Super Admin</SelectItem>
+                        {isSuperAdmin && <SelectItem value="admin">Administrador</SelectItem>}
+                        {isSuperAdmin && <SelectItem value="super_admin">Super Admin</SelectItem>}
                       </SelectContent>
                     </Select>
                   </div>
@@ -277,16 +276,18 @@ export default function UserManagement() {
                 )}
               </div>
               <div className="flex items-center gap-1">
-                <Button variant="ghost" size="icon" onClick={() => openEdit(u)} title="Editar">
-                  <Pencil className="w-4 h-4" />
-                </Button>
-                {/* Admin can toggle active, super_admin can do everything */}
-                <Button variant="ghost" size="icon" onClick={() => handleToggleActive(u)} disabled={toggling === u.id}
-                  title={(u as any).is_active === false ? 'Ativar' : 'Desativar'}>
-                  {toggling === u.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Power className="w-4 h-4" />}
-                </Button>
-                {/* Only super_admin can delete users */}
-                {isSuperAdmin && (
+                {(isSuperAdmin || u.role === 'user') && (
+                  <Button variant="ghost" size="icon" onClick={() => openEdit(u)} title="Editar">
+                    <Pencil className="w-4 h-4" />
+                  </Button>
+                )}
+                {(isSuperAdmin || u.role === 'user') && (
+                  <Button variant="ghost" size="icon" onClick={() => handleToggleActive(u)} disabled={toggling === u.id}
+                    title={(u as any).is_active === false ? 'Ativar' : 'Desativar'}>
+                    {toggling === u.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Power className="w-4 h-4" />}
+                  </Button>
+                )}
+                {(isSuperAdmin || (isAdmin && u.role === 'user')) && (
                   <Button variant="ghost" size="icon" onClick={() => handleDelete(u.id)} className="text-destructive hover:text-destructive" disabled={deleting === u.id}>
                     {deleting === u.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                   </Button>
@@ -294,16 +295,19 @@ export default function UserManagement() {
               </div>
             </div>
 
-            {/* Only super_admin can manage permissions */}
-            {isSuperAdmin && u.role !== 'admin' && u.role !== 'super_admin' && (
+            {(isAdmin || isSuperAdmin) && u.role === 'user' && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {(Object.keys(moduleLabels) as (keyof ModulePermissions)[]).map(mod => (
                   <div key={mod} className="flex items-center justify-between gap-2 p-3 rounded-lg bg-muted/50">
                     <span className="text-sm font-medium text-foreground">{moduleLabels[mod]}</span>
                     <Switch
                       checked={u.permissions[mod]}
-                      onCheckedChange={checked => {
-                        updateUserPermissions(u.id, { ...u.permissions, [mod]: checked });
+                      onCheckedChange={async checked => {
+                        try {
+                          await updateUserPermissions(u.id, { ...u.permissions, [mod]: checked });
+                        } catch (err) {
+                          toast.error(err instanceof Error ? err.message : 'Não foi possível atualizar as permissões');
+                        }
                       }}
                     />
                   </div>

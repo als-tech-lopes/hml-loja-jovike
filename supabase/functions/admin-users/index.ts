@@ -69,16 +69,13 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Ação inválida" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Admin restrictions: cannot create or delete users
-    if (callerRole === "admin" && (action === "create" || action === "delete")) {
-      return new Response(JSON.stringify({ error: "Apenas o Super Admin pode realizar esta ação" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
     if (action === "create") {
-      // Only super_admin reaches here
       const { name, email, password, role = "user", permissions } = body;
       if (!["user", "admin", "super_admin"].includes(role)) {
         return new Response(JSON.stringify({ error: "Perfil inválido" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      if (callerRole === "admin" && role !== "user") {
+        return new Response(JSON.stringify({ error: "Administradores só podem criar usuários comuns" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
       if (!name?.trim() || !email?.trim() || !password) {
         return new Response(JSON.stringify({ error: "Nome, e-mail e senha são obrigatórios" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -122,8 +119,8 @@ Deno.serve(async (req) => {
 
       const { data: targetRole, error: targetRoleError } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", userId).maybeSingle();
       if (targetRoleError) throw targetRoleError;
-      if (callerRole === "admin" && targetRole?.role === "super_admin") {
-        return new Response(JSON.stringify({ error: "Administradores não podem alterar um Super Admin" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      if (callerRole === "admin" && targetRole?.role !== "user") {
+        return new Response(JSON.stringify({ error: "Administradores só podem alterar usuários comuns" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
       if (role && !["user", "admin", "super_admin"].includes(role)) {
         return new Response(JSON.stringify({ error: "Perfil inválido" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -173,8 +170,8 @@ Deno.serve(async (req) => {
       }
       const { data: targetRole, error: targetRoleError } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", userId).maybeSingle();
       if (targetRoleError) throw targetRoleError;
-      if (callerRole === "admin" && targetRole?.role === "super_admin") {
-        return new Response(JSON.stringify({ error: "Administradores não podem alterar um Super Admin" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      if (callerRole === "admin" && targetRole?.role !== "user") {
+        return new Response(JSON.stringify({ error: "Administradores só podem alterar usuários comuns" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
       
       // Ban/unban in auth
@@ -191,12 +188,20 @@ Deno.serve(async (req) => {
     }
 
     if (action === "delete") {
-      // Only super_admin reaches here
       const { userId } = body;
       if (!userId || userId === caller.id) {
         return new Response(JSON.stringify({ error: "Não é possível excluir a própria conta" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
-      await supabaseAdmin.auth.admin.deleteUser(userId);
+      const { data: targetRole, error: targetRoleError } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", userId).maybeSingle();
+      if (targetRoleError) throw targetRoleError;
+      if (!targetRole) {
+        return new Response(JSON.stringify({ error: "Usuário não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      if (callerRole === "admin" && targetRole.role !== "user") {
+        return new Response(JSON.stringify({ error: "Administradores só podem excluir usuários comuns" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+      if (deleteError) throw deleteError;
       return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
