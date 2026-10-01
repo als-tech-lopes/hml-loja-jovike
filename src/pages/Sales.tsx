@@ -375,7 +375,7 @@ export default function Sales() {
           const currentProduct = products.find(product => product.id === i.product_id);
           const currentVariant = currentProduct?.variants.find(variant => variant.id === i.product_variant_id);
           return {
-            productId: i.product_id, productName: i.product_name, productCode: currentProduct?.productCode ?? i.product_code,
+            productId: i.product_id ?? `deleted:${i.product_code}`, productName: i.product_name, productCode: currentProduct?.productCode ?? i.product_code,
             quantity: i.quantity, unitPrice: Number(i.unit_price), productVariantId: i.product_variant_id,
             variantCode: i.variant_code ?? currentVariant?.variantCode ?? null, variantColor: i.variant_color, variantSize: i.variant_size,
           };

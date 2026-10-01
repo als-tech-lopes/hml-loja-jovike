@@ -57,7 +57,7 @@ export type Database = {
           created_at: string
           id: string
           note: string
-          product_id: string
+          product_id: string | null
           product_code: string
           product_name: string
           product_variant_id: string | null
@@ -75,7 +75,7 @@ export type Database = {
           created_at?: string
           id?: string
           note?: string
-          product_id: string
+          product_id?: string | null
           product_code: string
           product_name: string
           product_variant_id?: string | null
@@ -93,7 +93,7 @@ export type Database = {
           created_at?: string
           id?: string
           note?: string
-          product_id?: string
+          product_id?: string | null
           product_code?: string
           product_name?: string
           product_variant_id?: string | null
@@ -408,7 +408,7 @@ export type Database = {
       sale_items: {
         Row: {
           id: string
-          product_id: string
+          product_id: string | null
           product_code: string
           product_name: string
           product_variant_id: string | null
@@ -421,7 +421,7 @@ export type Database = {
         }
         Insert: {
           id?: string
-          product_id: string
+          product_id?: string | null
           product_code: string
           product_name: string
           product_variant_id?: string | null
@@ -434,7 +434,7 @@ export type Database = {
         }
         Update: {
           id?: string
-          product_id?: string
+          product_id?: string | null
           product_code?: string
           product_name?: string
           product_variant_id?: string | null

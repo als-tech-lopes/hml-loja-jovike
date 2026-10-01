@@ -39,7 +39,7 @@ export interface Product {
 
 export interface Movement {
   id: string;
-  productId: string;
+  productId: string | null;
   productName: string;
   productCode: string;
   productVariantId?: string | null;
@@ -235,9 +235,6 @@ export function StockProvider({ children }: { children: React.ReactNode }) {
       .maybeSingle();
 
     if (error) {
-      if (error.code === '23503') {
-        throw new Error('Este produto possui vendas vinculadas e não pode ser excluído, pois faz parte do histórico da loja.');
-      }
       throw new Error(`Não foi possível excluir o produto: ${error.message}`);
     }
     if (!deletedProduct) {
@@ -248,7 +245,9 @@ export function StockProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const addMovement = useCallback(async (m: Omit<Movement, 'id' | 'productCode' | 'date' | 'status' | 'cancelledAt' | 'cancelledBy'>) => {
-    const product = products.find(p => p.id === m.productId);
+    const productId = m.productId;
+    if (!productId) throw new Error('Produto não encontrado.');
+    const product = products.find(p => p.id === productId);
     if (!product) throw new Error('Produto não encontrado.');
     const variant = m.productVariantId ? product.variants.find(item => item.id === m.productVariantId) : undefined;
     if (product.variants.length > 0 && !variant) throw new Error('Selecione uma variação do produto.');
@@ -257,7 +256,7 @@ export function StockProvider({ children }: { children: React.ReactNode }) {
     if (m.sourceSaleId) throw new Error('Movimentações de venda devem ser criadas pela transação da venda.');
 
     const { data: movData, error: movementError } = await supabase.rpc('create_stock_movement', {
-      _product_id: m.productId,
+      _product_id: productId,
       _product_variant_id: variant?.id ?? null,
       _type: m.type,
       _quantity: m.quantity,

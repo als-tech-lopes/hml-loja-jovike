@@ -35,7 +35,7 @@ export default function Movements() {
   };
 
   const canCancelMovement = (movement: typeof movements[number]) => (
-    movement.status !== 'Cancelada' && !movement.sourceSaleId && !movement.note.startsWith('Venda para ')
+    Boolean(movement.productId) && movement.status !== 'Cancelada' && !movement.sourceSaleId && !movement.note.startsWith('Venda para ')
   );
 
   const selectedProduct = products.find(product => product.id === productId);

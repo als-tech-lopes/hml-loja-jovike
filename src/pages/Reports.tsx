@@ -120,7 +120,8 @@ export default function Reports() {
   const topProducts = useMemo(() => {
     const map = new Map<string, { id: string; productCode: string; name: string; qty: number; revenue: number; variants: Map<string, { code: string; color: string; size: string; qty: number; revenue: number }> }>();
     filteredSaleItems.forEach(si => {
-      const existing = map.get(si.product_id) || { id: si.product_id, productCode: si.product_code, name: si.product_name, qty: 0, revenue: 0, variants: new Map() };
+      const productKey = si.product_id ?? `deleted:${si.product_code}`;
+      const existing = map.get(productKey) || { id: productKey, productCode: si.product_code, name: si.product_name, qty: 0, revenue: 0, variants: new Map() };
       existing.qty += si.quantity;
       existing.revenue += si.quantity * Number(si.unit_price);
       if (si.product_variant_id && si.variant_code) {
@@ -129,7 +130,7 @@ export default function Reports() {
         variant.revenue += si.quantity * Number(si.unit_price);
         existing.variants.set(si.product_variant_id, variant);
       }
-      map.set(si.product_id, existing);
+      map.set(productKey, existing);
     });
     return Array.from(map.values()).map(product => ({ ...product, variants: Array.from(product.variants.values()).sort((a, b) => b.qty - a.qty) })).sort((a, b) => b.qty - a.qty);
   }, [filteredSaleItems]);
