@@ -12,11 +12,12 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Plus, Trash2, Eye, Loader2, Ban, Search, ReceiptText, Check, ChevronsUpDown, Package } from 'lucide-react';
+import { Plus, Trash2, Eye, Loader2, Ban, Search, ReceiptText, Check, ChevronsUpDown, Package, Printer } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { isWithinDateRange } from '@/lib/dateRange';
+import { issueSaleReceipt } from '@/lib/saleReceipt';
 
 interface SaleItem {
   productId: string;
@@ -312,7 +313,7 @@ function SaleForm({ products, onSave, onClose }: { products: any[]; onSave: (sal
         <Checkbox checked={printReceipt} onCheckedChange={checked => setPrintReceipt(checked === true)} />
         <span className="space-y-1">
           <span className="flex items-center gap-2 text-sm font-medium text-foreground"><ReceiptText className="w-4 h-4" /> Imprimir cupom fiscal</span>
-          <span className="block text-xs text-muted-foreground">Marca esta venda para impressão do cupom.</span>
+          <span className="block text-xs text-muted-foreground">No computador, envia para a impressora padrão. No celular, gera um PDF.</span>
         </span>
       </label>
       <div className="flex gap-2 justify-end">
@@ -341,6 +342,7 @@ export default function Sales() {
   const [search, setSearch] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [issuingReceipt, setIssuingReceipt] = useState(false);
 
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
@@ -414,6 +416,53 @@ export default function Sales() {
 
     await Promise.all([fetchSales(), refreshProducts(), refreshMovements()]);
     toast.success(`Venda ${saleData.sale_code} registrada com sucesso.`);
+
+    if (data.printReceipt) {
+      try {
+        setIssuingReceipt(true);
+        const { data: savedItems } = await supabase.from('sale_items').select('*').eq('sale_id', saleData.id);
+        const result = await issueSaleReceipt({
+          saleCode: saleData.sale_code,
+          clientName: saleData.client_name,
+          clientPhone: saleData.client_phone,
+          paymentMethod: saleData.payment_method,
+          subtotal: Number(saleData.subtotal),
+          discountAmount: Number(saleData.discount_amount),
+          total: Number(saleData.total),
+          date: saleData.created_at,
+          note: saleData.note,
+          sellerName: user?.name || user?.email || 'Não informado',
+          items: savedItems?.length ? savedItems.map(item => ({
+            productName: item.product_name,
+            productCode: item.product_code,
+            quantity: item.quantity,
+            unitPrice: Number(item.unit_price),
+            variantCode: item.variant_code,
+            variantColor: item.variant_color,
+            variantSize: item.variant_size,
+          })) : data.items,
+        });
+        toast.success(result === 'pdf' ? 'Cupom gerado em PDF.' : 'Cupom enviado para impressão.');
+      } catch (error) {
+        console.error('Falha ao emitir o cupom da venda:', error);
+        toast.warning('A venda foi registrada, mas não foi possível emitir o cupom. Use os detalhes da venda para tentar novamente.');
+      } finally {
+        setIssuingReceipt(false);
+      }
+    }
+  };
+
+  const handleReissueReceipt = async (sale: Sale) => {
+    try {
+      setIssuingReceipt(true);
+      const result = await issueSaleReceipt(sale);
+      toast.success(result === 'pdf' ? 'Cupom gerado em PDF.' : 'Cupom enviado para impressão.');
+    } catch (error) {
+      console.error('Falha ao reemitir o cupom da venda:', error);
+      toast.error('Não foi possível emitir o cupom. Confira as permissões de download ou impressão do navegador.');
+    } finally {
+      setIssuingReceipt(false);
+    }
   };
 
   const normalizedSearch = search.trim().toLowerCase();
@@ -505,6 +554,14 @@ export default function Sales() {
                 </div>
               </div>
               {detailSale.note && <p className="text-muted-foreground">Obs: {detailSale.note}</p>}
+              {detailSale.printReceipt && (
+                <div className="flex justify-end border-t pt-3">
+                  <Button type="button" variant="outline" onClick={() => handleReissueReceipt(detailSale)} disabled={issuingReceipt}>
+                    {issuingReceipt ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
+                    Emitir novamente
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </DialogContent>

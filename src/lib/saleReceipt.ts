@@ -1,0 +1,209 @@
+export interface ReceiptItem {
+  productName: string;
+  productCode: string;
+  quantity: number;
+  unitPrice: number;
+  variantCode?: string | null;
+  variantColor?: string | null;
+  variantSize?: string | null;
+}
+
+export interface ReceiptSale {
+  saleCode: string;
+  clientName: string;
+  clientPhone: string;
+  paymentMethod: string;
+  subtotal: number;
+  discountAmount: number;
+  total: number;
+  date: string;
+  note: string;
+  sellerName: string;
+  items: ReceiptItem[];
+}
+
+const paymentLabels: Record<string, string> = {
+  pix: 'PIX',
+  dinheiro: 'Dinheiro',
+  cartao_credito: 'Cartão de Crédito',
+  cartao_debito: 'Cartão de Débito',
+  boleto: 'Boleto',
+};
+
+const currency = (value: number) => value.toLocaleString('pt-BR', {
+  style: 'currency',
+  currency: 'BRL',
+});
+
+const escapeHtml = (value: string) => value
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#039;');
+
+const itemDescription = (item: ReceiptItem) => {
+  const variant = [item.variantColor, item.variantSize].filter(Boolean).join(' / ');
+  const code = item.variantCode || item.productCode;
+  return `${code} - ${item.productName}${variant ? ` (${variant})` : ''}`;
+};
+
+export const isMobileDevice = () => {
+  const userAgent = navigator.userAgent || '';
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent) || window.matchMedia('(max-width: 767px)').matches;
+};
+
+export const buildReceiptHtml = (sale: ReceiptSale) => {
+  const itemRows = sale.items.map(item => `
+    <div class="item">
+      <div>${escapeHtml(itemDescription(item))}</div>
+      <div class="row"><span>${item.quantity} x ${currency(item.unitPrice)}</span><strong>${currency(item.quantity * item.unitPrice)}</strong></div>
+    </div>`).join('');
+
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Cupom ${escapeHtml(sale.saleCode)}</title>
+  <style>
+    @page { size: 80mm auto; margin: 4mm; }
+    * { box-sizing: border-box; }
+    body { width: 72mm; margin: 0 auto; color: #000; font: 11px/1.35 Arial, sans-serif; }
+    h1, p { margin: 0; }
+    h1 { font-size: 16px; text-align: center; }
+    .center { text-align: center; }
+    .divider { margin: 8px 0; border-top: 1px dashed #000; }
+    .row { display: flex; justify-content: space-between; gap: 8px; }
+    .item { margin: 7px 0; }
+    .total { font-size: 14px; }
+    .note { overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+  <h1>JKB OUTFIT</h1>
+  <p class="center">CUPOM DA VENDA</p>
+  <div class="divider"></div>
+  <p><strong>Venda:</strong> ${escapeHtml(sale.saleCode)}</p>
+  <p><strong>Data:</strong> ${escapeHtml(new Date(sale.date).toLocaleString('pt-BR'))}</p>
+  <p><strong>Cliente:</strong> ${escapeHtml(sale.clientName)}</p>
+  ${sale.clientPhone ? `<p><strong>Telefone:</strong> ${escapeHtml(sale.clientPhone)}</p>` : ''}
+  <p><strong>Pagamento:</strong> ${escapeHtml(paymentLabels[sale.paymentMethod] || sale.paymentMethod)}</p>
+  <p><strong>Vendedor:</strong> ${escapeHtml(sale.sellerName)}</p>
+  <div class="divider"></div>
+  ${itemRows}
+  <div class="divider"></div>
+  <div class="row"><span>Subtotal</span><span>${currency(sale.subtotal)}</span></div>
+  ${sale.discountAmount > 0 ? `<div class="row"><span>Desconto</span><span>- ${currency(sale.discountAmount)}</span></div>` : ''}
+  <div class="row total"><strong>TOTAL</strong><strong>${currency(sale.total)}</strong></div>
+  ${sale.note ? `<div class="divider"></div><p class="note"><strong>Observação:</strong> ${escapeHtml(sale.note)}</p>` : ''}
+  <div class="divider"></div>
+  <p class="center">Obrigado pela preferência!</p>
+</body>
+</html>`;
+};
+
+const printReceipt = (sale: ReceiptSale) => new Promise<void>((resolve, reject) => {
+  const frame = document.createElement('iframe');
+  frame.setAttribute('aria-hidden', 'true');
+  frame.style.position = 'fixed';
+  frame.style.width = '0';
+  frame.style.height = '0';
+  frame.style.border = '0';
+  frame.style.visibility = 'hidden';
+
+  const removeFrame = () => window.setTimeout(() => frame.remove(), 1_000);
+  frame.onload = () => {
+    try {
+      const printWindow = frame.contentWindow;
+      if (!printWindow) throw new Error('Janela de impressão indisponível.');
+      printWindow.onafterprint = removeFrame;
+      printWindow.focus();
+      printWindow.print();
+      resolve();
+      window.setTimeout(removeFrame, 60_000);
+    } catch (error) {
+      frame.remove();
+      reject(error);
+    }
+  };
+  frame.srcdoc = buildReceiptHtml(sale);
+  document.body.appendChild(frame);
+});
+
+const downloadReceiptPdf = async (sale: ReceiptSale) => {
+  const { jsPDF } = await import('jspdf');
+  const estimatedHeight = Math.max(130, 92 + sale.items.length * 18 + (sale.note ? 18 : 0));
+  const pdf = new jsPDF({ unit: 'mm', format: [80, estimatedHeight], orientation: 'portrait' });
+  const left = 5;
+  const right = 75;
+  const width = right - left;
+  let y = 8;
+
+  const line = () => {
+    pdf.setDrawColor(80);
+    pdf.setLineDashPattern([1, 1], 0);
+    pdf.line(left, y, right, y);
+    y += 5;
+  };
+  const text = (value: string, size = 8, style: 'normal' | 'bold' = 'normal') => {
+    pdf.setFont('helvetica', style);
+    pdf.setFontSize(size);
+    const lines = pdf.splitTextToSize(value, width) as string[];
+    pdf.text(lines, left, y);
+    y += lines.length * (size * 0.42) + 1;
+  };
+  const valueRow = (label: string, value: string, bold = false) => {
+    pdf.setFont('helvetica', bold ? 'bold' : 'normal');
+    pdf.setFontSize(bold ? 11 : 8);
+    pdf.text(label, left, y);
+    pdf.text(value, right, y, { align: 'right' });
+    y += bold ? 6 : 4;
+  };
+
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(15);
+  pdf.text('JKB OUTFIT', 40, y, { align: 'center' });
+  y += 5;
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(9);
+  pdf.text('CUPOM DA VENDA', 40, y, { align: 'center' });
+  y += 5;
+  line();
+  text(`Venda: ${sale.saleCode}`);
+  text(`Data: ${new Date(sale.date).toLocaleString('pt-BR')}`);
+  text(`Cliente: ${sale.clientName}`);
+  if (sale.clientPhone) text(`Telefone: ${sale.clientPhone}`);
+  text(`Pagamento: ${paymentLabels[sale.paymentMethod] || sale.paymentMethod}`);
+  text(`Vendedor: ${sale.sellerName}`);
+  line();
+
+  sale.items.forEach(item => {
+    text(itemDescription(item), 8, 'bold');
+    valueRow(`${item.quantity} x ${currency(item.unitPrice)}`, currency(item.quantity * item.unitPrice));
+    y += 2;
+  });
+
+  line();
+  valueRow('Subtotal', currency(sale.subtotal));
+  if (sale.discountAmount > 0) valueRow('Desconto', `- ${currency(sale.discountAmount)}`);
+  valueRow('TOTAL', currency(sale.total), true);
+  if (sale.note) {
+    line();
+    text(`Observação: ${sale.note}`);
+  }
+  line();
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(8);
+  pdf.text('Obrigado pela preferência!', 40, y, { align: 'center' });
+  pdf.save(`cupom-${sale.saleCode.replace(/[^a-z0-9_-]/gi, '-')}.pdf`);
+};
+
+export const issueSaleReceipt = async (sale: ReceiptSale) => {
+  if (isMobileDevice()) {
+    await downloadReceiptPdf(sale);
+    return 'pdf' as const;
+  }
+
+  await printReceipt(sale);
+  return 'print' as const;
+};
