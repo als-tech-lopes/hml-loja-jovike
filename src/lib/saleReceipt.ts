@@ -97,6 +97,7 @@ export const buildReceiptHtml = (sale: ReceiptSale) => {
   <div class="row total"><strong>TOTAL</strong><strong>${currency(sale.total)}</strong></div>
   ${sale.note ? `<div class="divider"></div><p class="note"><strong>Observação:</strong> ${escapeHtml(sale.note)}</p>` : ''}
   <div class="divider"></div>
+  <p class="center">'Rua Delio guaraná 391 A/ Agostinho Porto - São João de Meriti'</p>
   <p class="center">Obrigado pela preferência!</p>
 </body>
 </html>`;
@@ -194,8 +195,8 @@ const downloadReceiptPdf = async (sale: ReceiptSale) => {
   line();
   pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(8);
-  pdf.text('Rua Delio guaraná 391 A/ Agostinho Porto - São João de Meriti', 40, y, { align: 'center' });
-  // pdf.text('Obrigado pela preferência!', 40, y, { align: 'center' });
+  // pdf.text('Rua Delio guaraná 391 A/ Agostinho Porto - São João de Meriti', 40, y, { align: 'center' });
+  pdf.text('Obrigado pela preferência!', 40, y, { align: 'center' });
   pdf.save(`cupom-${sale.saleCode.replace(/[^a-z0-9_-]/gi, '-')}.pdf`);
 };
 
