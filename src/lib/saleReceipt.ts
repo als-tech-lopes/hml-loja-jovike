@@ -30,6 +30,10 @@ const paymentLabels: Record<string, string> = {
   boleto: 'Boleto',
 };
 
+const receiptFontScale = 1.5;
+const receiptSongFontFamily = '"Songti SC", "STSong", "SimSun", "Noto Serif CJK SC", serif';
+const receiptPdfFont = 'times';
+
 const currency = (value: number) => value.toLocaleString('pt-BR', {
   style: 'currency',
   currency: 'BRL',
@@ -68,14 +72,14 @@ export const buildReceiptHtml = (sale: ReceiptSale) => {
   <style>
     @page { size: 80mm auto; margin: 4mm; }
     * { box-sizing: border-box; }
-    body { width: 72mm; margin: 0 auto; color: #000; font: 11px/1.35 Arial, sans-serif; }
+    body { width: 72mm; margin: 0 auto; color: #000; font-family: ${receiptSongFontFamily}; font-size: ${11 * receiptFontScale}px; line-height: 1.35; }
     h1, p { margin: 0; }
-    h1 { font-size: 16px; text-align: center; }
+    h1 { font-size: ${16 * receiptFontScale}px; text-align: center; }
     .center { text-align: center; }
     .divider { margin: 8px 0; border-top: 1px dashed #000; }
     .row { display: flex; justify-content: space-between; gap: 8px; }
     .item { margin: 7px 0; }
-    .total { font-size: 14px; }
+    .total { font-size: ${14 * receiptFontScale}px; }
     .note { overflow-wrap: anywhere; }
   </style>
 </head>
@@ -133,7 +137,7 @@ const printReceipt = (sale: ReceiptSale) => new Promise<void>((resolve, reject) 
 
 const downloadReceiptPdf = async (sale: ReceiptSale) => {
   const { jsPDF } = await import('jspdf');
-  const estimatedHeight = Math.max(130, 92 + sale.items.length * 18 + (sale.note ? 18 : 0));
+  const estimatedHeight = Math.max(170, 125 + sale.items.length * 27 + (sale.note ? 27 : 0));
   const pdf = new jsPDF({ unit: 'mm', format: [80, estimatedHeight], orientation: 'portrait' });
   const left = 5;
   const right = 75;
@@ -147,26 +151,26 @@ const downloadReceiptPdf = async (sale: ReceiptSale) => {
     y += 5;
   };
   const text = (value: string, size = 8, style: 'normal' | 'bold' = 'normal') => {
-    pdf.setFont('helvetica', style);
-    pdf.setFontSize(size);
+    pdf.setFont(receiptPdfFont, style);
+    pdf.setFontSize(size * receiptFontScale);
     const lines = pdf.splitTextToSize(value, width) as string[];
     pdf.text(lines, left, y);
-    y += lines.length * (size * 0.42) + 1;
+    y += lines.length * (size * receiptFontScale * 0.42) + 1;
   };
   const valueRow = (label: string, value: string, bold = false) => {
-    pdf.setFont('helvetica', bold ? 'bold' : 'normal');
-    pdf.setFontSize(bold ? 11 : 8);
+    pdf.setFont(receiptPdfFont, bold ? 'bold' : 'normal');
+    pdf.setFontSize((bold ? 11 : 8) * receiptFontScale);
     pdf.text(label, left, y);
     pdf.text(value, right, y, { align: 'right' });
     y += bold ? 6 : 4;
   };
 
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(15);
+  pdf.setFont(receiptPdfFont, 'bold');
+  pdf.setFontSize(15 * receiptFontScale);
   pdf.text('JKB OUTFIT', 40, y, { align: 'center' });
   y += 5;
-  pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(9);
+  pdf.setFont(receiptPdfFont, 'normal');
+  pdf.setFontSize(9 * receiptFontScale);
   pdf.text('CUPOM DA VENDA', 40, y, { align: 'center' });
   y += 5;
   line();
@@ -193,8 +197,8 @@ const downloadReceiptPdf = async (sale: ReceiptSale) => {
     text(`Observação: ${sale.note}`);
   }
   line();
-  pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(8);
+  pdf.setFont(receiptPdfFont, 'normal');
+  pdf.setFontSize(8 * receiptFontScale);
   // pdf.text('Rua Delio guaraná 391 A/ Agostinho Porto - São João de Meriti', 40, y, { align: 'center' });
   pdf.text('Obrigado pela preferência!', 40, y, { align: 'center' });
   pdf.save(`cupom-${sale.saleCode.replace(/[^a-z0-9_-]/gi, '-')}.pdf`);
