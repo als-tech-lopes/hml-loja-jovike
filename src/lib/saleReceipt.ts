@@ -97,7 +97,7 @@ export const buildReceiptHtml = (sale: ReceiptSale) => {
   <div class="row total"><strong>TOTAL</strong><strong>${currency(sale.total)}</strong></div>
   ${sale.note ? `<div class="divider"></div><p class="note"><strong>Observação:</strong> ${escapeHtml(sale.note)}</p>` : ''}
   <div class="divider"></div>
-  <p class="center">'Rua Delio guaraná 391 A/ Agostinho Porto - São João de Meriti'</p>
+  <p class="center">'Avenida Dr. Délio Guaraná 391 A/ Agostinho Porto - São João de Meriti'</p>
   <p class="center">Obrigado pela preferência!</p>
 </body>
 </html>`;
