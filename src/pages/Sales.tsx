@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { isWithinDateRange } from '@/lib/dateRange';
 import { issueSaleReceipt } from '@/lib/saleReceipt';
+import { calculateCardFee, getAppliedCardFee, roundCurrency } from '@/lib/salePricing';
 
 interface SaleItem {
   productId: string;
@@ -42,6 +43,7 @@ interface Sale {
   discountType: 'percentage' | 'fixed' | null;
   discountValue: number;
   discountAmount: number;
+  cardFeeAmount: number;
   total: number;
   date: string;
   note: string;
@@ -52,9 +54,7 @@ interface Sale {
   printReceipt: boolean;
 }
 
-type NewSalePayload = Omit<Sale, 'id' | 'saleCode' | 'date' | 'total' | 'status' | 'cancelledAt' | 'cancelledBy' | 'sellerName'>;
-
-const roundCurrency = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+type NewSalePayload = Omit<Sale, 'id' | 'saleCode' | 'date' | 'cardFeeAmount' | 'total' | 'status' | 'cancelledAt' | 'cancelledBy' | 'sellerName'>;
 
 function ProductThumbnail({ product, className }: { product: any; className?: string }) {
   const imageUrl = product.image_url || product.variantImages?.[0]?.imageUrl;
@@ -126,7 +126,9 @@ function SaleForm({ products, onSave, onClose }: { products: any[]; onSave: (sal
     ? subtotal * parsedDiscountValue / 100
     : discountType === 'fixed' ? parsedDiscountValue : 0;
   const discountAmount = roundCurrency(Math.min(subtotal, Math.max(0, Number.isFinite(calculatedDiscount) ? calculatedDiscount : 0)));
-  const total = roundCurrency(subtotal - discountAmount);
+  const amountAfterDiscount = roundCurrency(subtotal - discountAmount);
+  const cardFeeAmount = calculateCardFee(paymentMethod, amountAfterDiscount);
+  const total = roundCurrency(amountAfterDiscount + cardFeeAmount);
   const invalidDiscount = !Number.isFinite(parsedDiscountValue) || parsedDiscountValue < 0 ||
     (discountType === 'percentage' && parsedDiscountValue > 100) ||
     (discountType === 'fixed' && parsedDiscountValue > subtotal);
@@ -304,6 +306,9 @@ function SaleForm({ products, onSave, onClose }: { products: any[]; onSave: (sal
           <div className="space-y-1 border-t pt-3 text-sm">
             <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>R$ {subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>
             <div className="flex justify-between text-muted-foreground"><span>Desconto</span><span>- R$ {discountAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>
+            {cardFeeAmount > 0 && (
+              <div className="flex justify-between text-muted-foreground"><span>Taxa do cartão (5%)</span><span>+ R$ {cardFeeAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>
+            )}
             <div className="flex justify-between pt-1 text-lg font-bold text-foreground"><span>Total final</span><span>R$ {total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>
           </div>
         </div>
@@ -372,6 +377,7 @@ export default function Sales() {
         paymentMethod: s.payment_method, subtotal: Number(s.subtotal),
         discountType: s.discount_type as 'percentage' | 'fixed' | null,
         discountValue: Number(s.discount_value), discountAmount: Number(s.discount_amount),
+        cardFeeAmount: getAppliedCardFee(s.payment_method, Number(s.subtotal), Number(s.discount_amount), Number(s.total)),
         total: Number(s.total), note: s.note, date: s.created_at,
         items: (items || []).map(i => {
           const currentProduct = products.find(product => product.id === i.product_id);
@@ -428,6 +434,12 @@ export default function Sales() {
           paymentMethod: saleData.payment_method,
           subtotal: Number(saleData.subtotal),
           discountAmount: Number(saleData.discount_amount),
+          cardFeeAmount: getAppliedCardFee(
+            saleData.payment_method,
+            Number(saleData.subtotal),
+            Number(saleData.discount_amount),
+            Number(saleData.total),
+          ),
           total: Number(saleData.total),
           date: saleData.created_at,
           note: saleData.note,
@@ -548,6 +560,12 @@ export default function Sales() {
                     <div className="flex justify-between text-muted-foreground">
                       <span>Desconto{detailSale.discountType === 'percentage' ? ` (${detailSale.discountValue}%)` : ''}</span>
                       <span>- R$ {detailSale.discountAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
+                  {detailSale.cardFeeAmount > 0 && (
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Taxa do cartão (5%)</span>
+                      <span>+ R$ {detailSale.cardFeeAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                     </div>
                   )}
                   <div className="flex justify-between pt-1 font-semibold text-foreground"><span>Total final</span><span>R$ {detailSale.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>

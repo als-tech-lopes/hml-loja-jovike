@@ -3,7 +3,7 @@ import { buildReceiptHtml, isMobileDevice, type ReceiptSale } from './saleReceip
 
 const sale: ReceiptSale = {
   saleCode: 'VEN-123', clientName: '<Cliente & Filhos>', clientPhone: '11999999999',
-  paymentMethod: 'pix', subtotal: 100, discountAmount: 10, total: 90,
+  paymentMethod: 'pix', subtotal: 100, discountAmount: 10, cardFeeAmount: 0, total: 90,
   date: '2026-10-03T12:00:00-03:00', note: 'Entregar <hoje>', sellerName: 'Arthur',
   items: [{ productName: 'Camiseta', productCode: 'P-1', quantity: 2, unitPrice: 50 }],
 };
@@ -18,11 +18,24 @@ describe('saleReceipt', () => {
     expect(html).toContain('@media print');
     expect(html).toContain('@page { size: 58mm auto; margin: 0; }');
     expect(html).toContain('width: 48mm');
-    expect(html).toContain('font-family: "Courier New", Courier, monospace');
-    expect(html).toContain('font-size: 12.5px');
-    expect(html).toContain('font-weight: 700');
-    expect(html).toContain('line-height: 1.2');
-    expect(html).toContain('.total, .total strong { font-size: 15px; font-weight: 900; }');
+    expect(html).toContain('font-family: Arial, sans-serif');
+    expect(html).toContain('font-size: 13px');
+    expect(html).toContain('font-weight: 400');
+    expect(html).toContain('line-height: 1.35');
+    expect(html).toContain('letter-spacing: 0.25px');
+    expect(html).toContain('.total, .total strong { font-size: 15px; font-weight: 700; }');
+  });
+
+  it('exibe a taxa do cartão quando aplicada', () => {
+    const html = buildReceiptHtml({
+      ...sale,
+      paymentMethod: 'cartao_credito',
+      cardFeeAmount: 4.5,
+      total: 94.5,
+    });
+
+    expect(html).toContain('Taxa do cartão (5%)');
+    expect(html).toContain('4,50');
   });
 
   it('identifica celular pelo user agent', () => {

@@ -15,6 +15,7 @@ export interface ReceiptSale {
   paymentMethod: string;
   subtotal: number;
   discountAmount: number;
+  cardFeeAmount: number;
   total: number;
   date: string;
   note: string;
@@ -118,6 +119,7 @@ export const buildReceiptHtml = (sale: ReceiptSale) => {
   <div class="divider"></div>
   <div class="row"><span>Subtotal</span><span>${currency(sale.subtotal)}</span></div>
   ${sale.discountAmount > 0 ? `<div class="row"><span>Desconto</span><span>- ${currency(sale.discountAmount)}</span></div>` : ''}
+  ${sale.cardFeeAmount > 0 ? `<div class="row"><span>Taxa do cartão (5%)</span><span>+ ${currency(sale.cardFeeAmount)}</span></div>` : ''}
   <div class="row total"><strong>TOTAL</strong><strong>${currency(sale.total)}</strong></div>
   ${sale.note ? `<div class="divider"></div><p class="note"><strong>Observação:</strong> ${escapeHtml(sale.note)}</p>` : ''}
   <div class="divider"></div>
@@ -211,6 +213,7 @@ const downloadReceiptPdf = async (sale: ReceiptSale) => {
   line();
   valueRow('Subtotal', currency(sale.subtotal));
   if (sale.discountAmount > 0) valueRow('Desconto', `- ${currency(sale.discountAmount)}`);
+  if (sale.cardFeeAmount > 0) valueRow('Taxa do cartão (5%)', `+ ${currency(sale.cardFeeAmount)}`);
   valueRow('TOTAL', currency(sale.total), true);
   if (sale.note) {
     line();
