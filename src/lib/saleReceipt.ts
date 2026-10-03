@@ -31,7 +31,7 @@ const paymentLabels: Record<string, string> = {
 };
 
 const receiptFontScale = 1.5;
-const receiptPdfFont = 'times';
+const receiptPdfFont = 'helvetica';
 
 const currency = (value: number) => value.toLocaleString('pt-BR', {
   style: 'currency',
@@ -83,22 +83,23 @@ export const buildReceiptHtml = (sale: ReceiptSale) => {
         margin: 0 auto !important;
         padding: 0 !important;
         color: #000;
-        font-family: "Arial", Courier, monospace;
-        font-size: 14.5px;
-        font-weight: 700;
-        line-height: 1.2;
+        font-family: Arial, sans-serif;
+        font-size: 13px;
+        font-weight: 400;
+        line-height: 1.35;
+        letter-spacing: 0.25px;
         print-color-adjust: exact;
         -webkit-print-color-adjust: exact;
       }
-      h1 { font-size: 16px; font-weight: 900; text-align: center; }
-      strong { font-weight: 700; }
+      h1 { font-size: 16px; font-weight: 700; text-align: center; }
+      strong { font-weight: 600; }
       .divider { margin: 6px 0; border-top: 1px solid #000; }
       .row { display: flex; align-items: baseline; justify-content: space-between; gap: 4px; }
       .row > * { min-width: 0; }
       .row > :last-child { flex: none; white-space: nowrap; }
       .item { margin: 5px 0; }
       .item-description, .note, p { overflow-wrap: anywhere; word-break: break-word; }
-      .total, .total strong { font-size: 15px; font-weight: 900; }
+      .total, .total strong { font-size: 15px; font-weight: 700; }
     }
   </style>
 </head>
@@ -170,14 +171,14 @@ const downloadReceiptPdf = async (sale: ReceiptSale) => {
     y += 5;
   };
   const text = (value: string, size = 8) => {
-    pdf.setFont(receiptPdfFont, 'bold');
+    pdf.setFont(receiptPdfFont, 'normal');
     pdf.setFontSize(size * receiptFontScale);
     const lines = pdf.splitTextToSize(value, width) as string[];
     pdf.text(lines, left, y);
     y += lines.length * (size * receiptFontScale * 0.42) + 1;
   };
   const valueRow = (label: string, value: string, bold = false) => {
-    pdf.setFont(receiptPdfFont, 'bold');
+    pdf.setFont(receiptPdfFont, bold ? 'bold' : 'normal');
     pdf.setFontSize((bold ? 11 : 8) * receiptFontScale);
     pdf.text(label, left, y);
     pdf.text(value, right, y, { align: 'right' });
