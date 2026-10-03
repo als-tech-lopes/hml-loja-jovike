@@ -17,6 +17,8 @@ describe('saleReceipt', () => {
     expect(html).not.toContain('<Cliente & Filhos>');
     expect(html).toContain('font-family: "Songti SC", "STSong", "SimSun", "Noto Serif CJK SC", serif');
     expect(html).toContain('font-size: 16.5px');
+    expect(html).toContain('font-weight: 700');
+    expect(html).toContain('border-top: 2px solid #000');
   });
 
   it('identifica celular pelo user agent', () => {

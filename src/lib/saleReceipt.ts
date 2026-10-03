@@ -33,6 +33,7 @@ const paymentLabels: Record<string, string> = {
 const receiptFontScale = 1.5;
 const receiptSongFontFamily = '"Songti SC", "STSong", "SimSun", "Noto Serif CJK SC", serif';
 const receiptPdfFont = 'times';
+const receiptFontWeight = 700;
 
 const currency = (value: number) => value.toLocaleString('pt-BR', {
   style: 'currency',
@@ -72,11 +73,11 @@ export const buildReceiptHtml = (sale: ReceiptSale) => {
   <style>
     @page { size: 80mm auto; margin: 4mm; }
     * { box-sizing: border-box; }
-    body { width: 72mm; margin: 0 auto; color: #000; font-family: ${receiptSongFontFamily}; font-size: ${11 * receiptFontScale}px; line-height: 1.35; }
+    body { width: 72mm; margin: 0 auto; color: #000; font-family: ${receiptSongFontFamily}; font-size: ${11 * receiptFontScale}px; font-weight: ${receiptFontWeight}; line-height: 1.35; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
     h1, p { margin: 0; }
-    h1 { font-size: ${16 * receiptFontScale}px; text-align: center; }
+    h1 { font-size: ${16 * receiptFontScale}px; font-weight: 900; text-align: center; }
     .center { text-align: center; }
-    .divider { margin: 8px 0; border-top: 1px dashed #000; }
+    .divider { margin: 8px 0; border-top: 2px solid #000; }
     .row { display: flex; justify-content: space-between; gap: 8px; }
     .item { margin: 7px 0; }
     .total { font-size: ${14 * receiptFontScale}px; }
@@ -150,15 +151,15 @@ const downloadReceiptPdf = async (sale: ReceiptSale) => {
     pdf.line(left, y, right, y);
     y += 5;
   };
-  const text = (value: string, size = 8, style: 'normal' | 'bold' = 'normal') => {
-    pdf.setFont(receiptPdfFont, style);
+  const text = (value: string, size = 8) => {
+    pdf.setFont(receiptPdfFont, 'bold');
     pdf.setFontSize(size * receiptFontScale);
     const lines = pdf.splitTextToSize(value, width) as string[];
     pdf.text(lines, left, y);
     y += lines.length * (size * receiptFontScale * 0.42) + 1;
   };
   const valueRow = (label: string, value: string, bold = false) => {
-    pdf.setFont(receiptPdfFont, bold ? 'bold' : 'normal');
+    pdf.setFont(receiptPdfFont, 'bold');
     pdf.setFontSize((bold ? 11 : 8) * receiptFontScale);
     pdf.text(label, left, y);
     pdf.text(value, right, y, { align: 'right' });
@@ -169,7 +170,7 @@ const downloadReceiptPdf = async (sale: ReceiptSale) => {
   pdf.setFontSize(15 * receiptFontScale);
   pdf.text('JKB OUTFIT', 40, y, { align: 'center' });
   y += 5;
-  pdf.setFont(receiptPdfFont, 'normal');
+  pdf.setFont(receiptPdfFont, 'bold');
   pdf.setFontSize(9 * receiptFontScale);
   pdf.text('CUPOM DA VENDA', 40, y, { align: 'center' });
   y += 5;
@@ -183,7 +184,7 @@ const downloadReceiptPdf = async (sale: ReceiptSale) => {
   line();
 
   sale.items.forEach(item => {
-    text(itemDescription(item), 8, 'bold');
+    text(itemDescription(item), 8);
     valueRow(`${item.quantity} x ${currency(item.unitPrice)}`, currency(item.quantity * item.unitPrice));
     y += 2;
   });
@@ -197,7 +198,7 @@ const downloadReceiptPdf = async (sale: ReceiptSale) => {
     text(`Observação: ${sale.note}`);
   }
   line();
-  pdf.setFont(receiptPdfFont, 'normal');
+  pdf.setFont(receiptPdfFont, 'bold');
   pdf.setFontSize(8 * receiptFontScale);
   // pdf.text('Rua Delio guaraná 391 A/ Agostinho Porto - São João de Meriti', 40, y, { align: 'center' });
   pdf.text('Obrigado pela preferência!', 40, y, { align: 'center' });
