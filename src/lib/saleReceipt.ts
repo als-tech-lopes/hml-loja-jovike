@@ -84,7 +84,7 @@ export const buildReceiptHtml = (sale: ReceiptSale) => {
         padding: 0 !important;
         color: #000;
         font-family: "Courier New", Courier, monospace;
-        font-size: 12.5px;
+        font-size: 14.5px;
         font-weight: 700;
         line-height: 1.2;
         print-color-adjust: exact;
