@@ -31,9 +31,7 @@ const paymentLabels: Record<string, string> = {
 };
 
 const receiptFontScale = 1.5;
-const receiptSongFontFamily = '"Songti SC", "STSong", "SimSun", "Noto Serif CJK SC", serif';
 const receiptPdfFont = 'times';
-const receiptFontWeight = 700;
 
 const currency = (value: number) => value.toLocaleString('pt-BR', {
   style: 'currency',
@@ -61,7 +59,7 @@ export const isMobileDevice = () => {
 export const buildReceiptHtml = (sale: ReceiptSale) => {
   const itemRows = sale.items.map(item => `
     <div class="item">
-      <div>${escapeHtml(itemDescription(item))}</div>
+      <div class="item-description">${escapeHtml(itemDescription(item))}</div>
       <div class="row"><span>${item.quantity} x ${currency(item.unitPrice)}</span><strong>${currency(item.quantity * item.unitPrice)}</strong></div>
     </div>`).join('');
 
@@ -71,17 +69,37 @@ export const buildReceiptHtml = (sale: ReceiptSale) => {
   <meta charset="utf-8">
   <title>Cupom ${escapeHtml(sale.saleCode)}</title>
   <style>
-    @page { size: 80mm auto; margin: 4mm; }
     * { box-sizing: border-box; }
-    body { width: 72mm; margin: 0 auto; color: #000; font-family: ${receiptSongFontFamily}; font-size: ${11 * receiptFontScale}px; font-weight: ${receiptFontWeight}; line-height: 1.35; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    html, body { margin: 0; padding: 0; }
     h1, p { margin: 0; }
-    h1 { font-size: ${16 * receiptFontScale}px; font-weight: 900; text-align: center; }
     .center { text-align: center; }
-    .divider { margin: 8px 0; border-top: 2px solid #000; }
-    .row { display: flex; justify-content: space-between; gap: 8px; }
-    .item { margin: 7px 0; }
-    .total { font-size: ${14 * receiptFontScale}px; }
-    .note { overflow-wrap: anywhere; }
+
+    @media print {
+      @page { size: 58mm auto; margin: 0; }
+      html { width: 58mm; margin: 0 !important; padding: 0 !important; }
+      body {
+        width: 48mm;
+        max-width: 48mm;
+        margin: 0 auto !important;
+        padding: 0 !important;
+        color: #000;
+        font-family: "Courier New", Courier, monospace;
+        font-size: 12.5px;
+        font-weight: 700;
+        line-height: 1.2;
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+      }
+      h1 { font-size: 16px; font-weight: 900; text-align: center; }
+      strong { font-weight: 700; }
+      .divider { margin: 6px 0; border-top: 1px solid #000; }
+      .row { display: flex; align-items: baseline; justify-content: space-between; gap: 4px; }
+      .row > * { min-width: 0; }
+      .row > :last-child { flex: none; white-space: nowrap; }
+      .item { margin: 5px 0; }
+      .item-description, .note, p { overflow-wrap: anywhere; word-break: break-word; }
+      .total, .total strong { font-size: 15px; font-weight: 900; }
+    }
   </style>
 </head>
 <body>

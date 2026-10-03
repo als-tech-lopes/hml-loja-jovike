@@ -15,10 +15,14 @@ describe('saleReceipt', () => {
     expect(html).toContain('90,00');
     expect(html).toContain('&lt;Cliente &amp; Filhos&gt;');
     expect(html).not.toContain('<Cliente & Filhos>');
-    expect(html).toContain('font-family: "Songti SC", "STSong", "SimSun", "Noto Serif CJK SC", serif');
-    expect(html).toContain('font-size: 16.5px');
+    expect(html).toContain('@media print');
+    expect(html).toContain('@page { size: 58mm auto; margin: 0; }');
+    expect(html).toContain('width: 48mm');
+    expect(html).toContain('font-family: "Courier New", Courier, monospace');
+    expect(html).toContain('font-size: 12.5px');
     expect(html).toContain('font-weight: 700');
-    expect(html).toContain('border-top: 2px solid #000');
+    expect(html).toContain('line-height: 1.2');
+    expect(html).toContain('.total, .total strong { font-size: 15px; font-weight: 900; }');
   });
 
   it('identifica celular pelo user agent', () => {
